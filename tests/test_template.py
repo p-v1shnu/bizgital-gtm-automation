@@ -117,3 +117,60 @@ def test_audit_reports_a_missing_constant(template_path):
     template = load_template(template_path)
     problems = audit_template(template, ("Nope",))
     assert any("Nope" in problem for problem in problems)
+
+
+def test_export_enum_casing_is_converted_for_the_api(template_path):
+    """A UI export writes SCREAMING_SNAKE enums; the API only accepts lowerCamel."""
+    template = load_template(template_path)
+    tag = strip_entity(
+        dict(
+            template["tag"][0],
+            tagFiringOption="ONCE_PER_EVENT",
+            consentSettings={"consentStatus": "NOT_SET"},
+            monitoringMetadata={"type": "MAP"},
+            parameter=[{"type": "TEMPLATE", "key": "tagId", "value": "G-X"}],
+        ),
+        "tag",
+    )
+    assert tag["tagFiringOption"] == "oncePerEvent"
+    assert tag["consentSettings"]["consentStatus"] == "notSet"
+    assert tag["monitoringMetadata"]["type"] == "map"
+    assert tag["parameter"][0]["type"] == "template"
+
+
+def test_free_form_type_strings_are_left_alone():
+    """Tag, variable and custom template types are not enums."""
+    for entity_type in ("html", "gaawe", "googtag", "v", "c", "cvt_222_77"):
+        cleaned = strip_entity({"name": "x", "type": entity_type}, "tag")
+        assert cleaned["type"] == entity_type
+
+
+def test_nested_enum_values_are_converted():
+    trigger = strip_entity(
+        {
+            "name": "EV - purchase",
+            "type": "CUSTOM_EVENT",
+            "customEventFilter": [
+                {"type": "EQUALS", "parameter": [{"type": "TEMPLATE", "key": "arg0"}]}
+            ],
+        },
+        "trigger",
+    )
+    assert trigger["type"] == "customEvent"
+    assert trigger["customEventFilter"][0]["type"] == "equals"
+    assert trigger["customEventFilter"][0]["parameter"][0]["type"] == "template"
+
+
+def test_a_template_already_in_api_casing_is_untouched():
+    cleaned = strip_entity(
+        {"name": "x", "type": "html", "tagFiringOption": "oncePerEvent"}, "tag"
+    )
+    assert cleaned["tagFiringOption"] == "oncePerEvent"
+
+
+def test_parameter_values_are_never_treated_as_enums():
+    cleaned = strip_entity(
+        {"name": "x", "parameter": [{"type": "TEMPLATE", "key": "k", "value": "SOME_VALUE"}]},
+        "tag",
+    )
+    assert cleaned["parameter"][0]["value"] == "SOME_VALUE"

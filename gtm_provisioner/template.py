@@ -12,6 +12,7 @@ the second and everything downstream works on one shape.
 
 import json
 import os
+import re
 
 from .errors import TemplateError
 
@@ -45,6 +46,38 @@ ID_FIELD_BY_KIND = {
 }
 
 CONSTANT_VARIABLE_TYPE = "c"
+
+# A GTM UI export writes enum values as SCREAMING_SNAKE ("TEMPLATE", "CUSTOM_EVENT")
+# but the API only accepts lowerCamelCase ("template", "customEvent"). Only keys
+# that actually hold an enum are converted; free-form type strings such as a tag's
+# "html" or a custom template's "cvt_..." are already lowercase and never match.
+ENUM_VALUED_KEYS = ("type", "tagFiringOption", "consentStatus")
+SCREAMING_SNAKE = re.compile(r"^[A-Z][A-Z0-9_]*$")
+
+
+def _to_lower_camel(text):
+    head, *tail = text.lower().split("_")
+    return head + "".join(part.title() for part in tail)
+
+
+def normalise_enum_casing(node):
+    """Return `node` with every SCREAMING_SNAKE enum value lower-camel-cased.
+
+    A template that already came from the API passes through untouched, because
+    its values never match the pattern.
+    """
+    if isinstance(node, dict):
+        return {
+            key: _to_lower_camel(value)
+            if key in ENUM_VALUED_KEYS
+            and isinstance(value, str)
+            and SCREAMING_SNAKE.match(value)
+            else normalise_enum_casing(value)
+            for key, value in node.items()
+        }
+    if isinstance(node, list):
+        return [normalise_enum_casing(item) for item in node]
+    return node
 
 
 class ContainerTemplate:
@@ -86,8 +119,7 @@ def normalise_builtin_type(value):
         raise TemplateError("Built-in variable entry has an empty 'type'.")
     if "_" not in text and not text.isupper():
         return text
-    head, *tail = text.lower().split("_")
-    return head + "".join(part.title() for part in tail)
+    return _to_lower_camel(text)
 
 
 def load_template(path):
@@ -151,7 +183,7 @@ def strip_entity(entity, kind):
     for field_name in SERVER_ASSIGNED_FIELDS:
         cleaned.pop(field_name, None)
     cleaned.pop(ID_FIELD_BY_KIND.get(kind, ""), None)
-    return cleaned
+    return normalise_enum_casing(cleaned)
 
 
 def apply_constant_values(variables, values_by_name):

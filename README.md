@@ -69,6 +69,11 @@ Either shape works:
 - a GTM UI export (Admin → Export Container)
 - a raw `ContainerVersion` from the API's `versions.get`
 
+A UI export writes enum values as `SCREAMING_SNAKE` (`"TEMPLATE"`,
+`"CUSTOM_EVENT"`, `"ONCE_PER_EVENT"`) while the API only accepts lowerCamelCase
+(`"template"`, `"customEvent"`, `"oncePerEvent"`). The loader converts them.
+A template that already came from the API passes through unchanged.
+
 The two Constant variable names in `config.yaml` must match the template
 exactly. If they do not, the run stops before any container is created and
 lists the Constant variables the template does contain.
