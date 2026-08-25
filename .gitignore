@@ -1,0 +1,94 @@
+# ---------------------------------------------------------------------------
+# Secrets and client data — MUST NEVER be committed
+# ---------------------------------------------------------------------------
+
+# Google service account key (GTM API credentials)
+secrets/*
+service-account*.json
+service_account*.json
+credentials*.json
+client_secret*.json
+*-key.json
+*.pem
+*.p12
+
+# Golden container template export — contains real client analytics IDs
+templates/*
+template*.json
+*.template.json
+container-export*.json
+
+# Local configuration (GTM account ID, file paths)
+config.yaml
+config.yml
+config.json
+config.toml
+config.ini
+.env
+.env.*
+!.env.example
+
+# Explicitly keep the committed examples
+!config.example.yaml
+!config.example.yml
+!templates/.gitkeep
+!secrets/.gitkeep
+
+# Run output / logs (may echo client IDs)
+logs/
+*.log
+out/
+provisioned-*.json
+
+# ---------------------------------------------------------------------------
+# Python
+# ---------------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+.python-version
+
+# Tooling caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+
+# ---------------------------------------------------------------------------
+# Editors and OS
+# ---------------------------------------------------------------------------
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
