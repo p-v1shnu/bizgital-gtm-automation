@@ -1,0 +1,33 @@
+# Copy to config.yaml and fill in. config.yaml is git-ignored.
+
+gtm:
+  # Numeric GTM account ID (Admin > Account Settings), not the GTM-XXXXXXX ID.
+  account_id: "1234567"
+  # v1 provisions web containers only.
+  usage_context: "web"
+  # Leave empty unless the service account must impersonate a Workspace user
+  # through domain-wide delegation.
+  impersonate_subject: ""
+
+paths:
+  # Relative paths are resolved against this file's directory.
+  service_account_key: "secrets/service-account.json"
+  template: "templates/golden-container.json"
+
+variables:
+  # Names of the two Constant variables in the golden container that hold the
+  # store-specific IDs. They must match the template exactly.
+  ga4_measurement_id: "GA4 Measurement ID"
+  meta_pixel_id: "Meta Pixel ID"
+
+api:
+  # Retry with exponential backoff when GTM returns 429 or a 5xx.
+  max_retries: 5
+  initial_backoff_seconds: 1.0
+  max_backoff_seconds: 60.0
+  # Minimum gap between requests, to stay under the write quota.
+  request_interval_seconds: 0.4
+
+behaviour:
+  warn_on_duplicate_name: true
+  version_name_prefix: "Initial provisioning"
