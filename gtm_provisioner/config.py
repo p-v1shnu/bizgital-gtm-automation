@@ -10,12 +10,15 @@ from .errors import ConfigError
 DEFAULT_CONFIG_PATH = "config.yaml"
 
 # Scopes required to create a container, populate a workspace, cut a version
-# and publish it. The service account must hold GTM account-level access.
+# and publish it, plus create a GA4 property and web data stream. The service
+# account must hold GTM account-level access and GA4 Account-level Editor
+# access (granted separately in each product's own admin UI).
 DEFAULT_SCOPES = (
     "https://www.googleapis.com/auth/tagmanager.edit.containers",
     "https://www.googleapis.com/auth/tagmanager.edit.containerversions",
     "https://www.googleapis.com/auth/tagmanager.publish",
     "https://www.googleapis.com/auth/tagmanager.manage.accounts",
+    "https://www.googleapis.com/auth/analytics.edit",
 )
 
 
@@ -27,6 +30,7 @@ class Config:
     template_path: str
     ga4_variable_name: str
     meta_pixel_variable_name: str
+    ga4_account_id: str
     impersonate_subject: str = ""
     scopes: tuple = DEFAULT_SCOPES
     max_retries: int = 5
@@ -35,6 +39,9 @@ class Config:
     request_interval_seconds: float = 0.4
     warn_on_duplicate_name: bool = True
     version_name_prefix: str = "Initial provisioning"
+    ga4_timezone: str = "Asia/Vientiane"
+    ga4_currency_code: str = "USD"
+    ga4_industry_category: str = "SHOPPING"
     extra: dict = field(default_factory=dict)
 
 
@@ -72,6 +79,7 @@ def load_config(path=DEFAULT_CONFIG_PATH):
     variables = raw.get("variables") or {}
     api = raw.get("api") or {}
     behaviour = raw.get("behaviour") or {}
+    ga4 = raw.get("ga4") or {}
 
     base_dir = os.path.dirname(os.path.abspath(path))
 
@@ -92,6 +100,10 @@ def load_config(path=DEFAULT_CONFIG_PATH):
         request_interval_seconds=float(api.get("request_interval_seconds", 0.4)),
         warn_on_duplicate_name=bool(behaviour.get("warn_on_duplicate_name", True)),
         version_name_prefix=str(behaviour.get("version_name_prefix") or "Initial provisioning"),
+        ga4_account_id=str(_require(ga4, "account_id", "ga4")),
+        ga4_timezone=str(ga4.get("timezone") or "Asia/Vientiane"),
+        ga4_currency_code=str(ga4.get("currency_code") or "USD"),
+        ga4_industry_category=str(ga4.get("industry_category") or "SHOPPING"),
         extra=raw,
     )
 

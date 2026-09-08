@@ -10,20 +10,37 @@ GA4_MEASUREMENT_ID_PATTERN = re.compile(r"^G-[A-Z0-9]{10}$")
 # Meta Pixel IDs are numeric; currently 15 or 16 digits.
 META_PIXEL_ID_PATTERN = re.compile(r"^[0-9]{15,16}$")
 
+# Bare domain, no scheme or path: labels of letters/digits/hyphens (not
+# starting or ending with a hyphen), at least one dot.
+WEBSITE_DOMAIN_PATTERN = re.compile(
+    r"^(?!-)[A-Za-z0-9-]{1,63}(?<!-)(\.(?!-)[A-Za-z0-9-]{1,63}(?<!-))+$"
+)
+
 MAX_CONTAINER_NAME_LENGTH = 100
 
 
-def validate_container_name(value):
-    """Return the trimmed container name, or raise ValidationError."""
-    name = (value or "").strip()
-    if not name:
-        raise ValidationError("Store / container name must not be empty.")
-    if len(name) > MAX_CONTAINER_NAME_LENGTH:
+def validate_website_domain(value):
+    """Return the bare domain, or raise ValidationError.
+
+    The domain doubles as both the GTM container name and the GA4 property
+    name, matching the naming convention already in use, so it is checked
+    against both the container name length limit and a domain shape.
+    """
+    domain = (value or "").strip()
+    if not domain:
+        raise ValidationError("Website domain must not be empty.")
+    domain = re.sub(r"^https?://", "", domain, flags=re.IGNORECASE).rstrip("/")
+    if len(domain) > MAX_CONTAINER_NAME_LENGTH:
         raise ValidationError(
-            f"Store / container name must be at most {MAX_CONTAINER_NAME_LENGTH} "
-            f"characters (got {len(name)})."
+            f"Website domain must be at most {MAX_CONTAINER_NAME_LENGTH} "
+            f"characters (got {len(domain)})."
         )
-    return name
+    if not WEBSITE_DOMAIN_PATTERN.match(domain):
+        raise ValidationError(
+            f"Website domain {domain!r} is malformed. Expected a bare domain, "
+            "e.g. store.shopshop.la (no https:// prefix or path)."
+        )
+    return domain
 
 
 def validate_ga4_measurement_id(value):

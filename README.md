@@ -1,28 +1,33 @@
 # GTM Container Provisioning
 
-Creates a fully configured, published Google Tag Manager container for a new
-store from a golden-container template, and prints the `GTM-XXXXXXX` ID to
-install on the store's website.
+Creates a GA4 property, its web data stream, and a fully configured, published
+Google Tag Manager container for a new store from a golden-container
+template, and prints the `GTM-XXXXXXX` ID to install on the store's website.
 
-Scope is v1 of `docs/PRD-gtm-provisioning-en.md`: the operator creates the GA4
-property and the Meta Pixel beforehand and supplies both IDs.
+v1 scope is `docs/PRD-gtm-provisioning-en.md`; automatically creating the GA4
+property is a piece of the PRD's v2 roadmap, brought forward early. The
+operator still creates the Meta Pixel beforehand and supplies its ID — only
+GA4 is automated so far.
 
 ## What it does
 
-1. Creates the container under the configured GTM account
-2. Enables the built-in variables listed in the template
-3. Creates folders and custom templates, if the template has any
-4. Creates every user-defined variable, with this store's GA4 and Pixel IDs
+1. Creates a GA4 property and web data stream for the store's website domain,
+   and reads back the Measurement ID
+2. Creates the container under the configured GTM account
+3. Enables the built-in variables listed in the template
+4. Creates folders and custom templates, if the template has any
+5. Creates every user-defined variable, with this store's GA4 and Pixel IDs
    already substituted into the two Constant variables
-5. Creates every trigger, recording `{template trigger ID: new trigger ID}`
-6. Creates every tag, rewriting `firingTriggerId` and `blockingTriggerId`
+6. Creates every trigger, recording `{template trigger ID: new trigger ID}`
+7. Creates every tag, rewriting `firingTriggerId` and `blockingTriggerId`
    through that map
-7. Reads the two Constants back to confirm they hold this store's IDs
-8. Creates a version and publishes it
+8. Reads the two Constants back to confirm they hold this store's IDs
+9. Creates a version and publishes it
 
-Step 3 is not in the PRD's numbered order. Folders and custom templates are
-prerequisites — variables and tags reference them — so they are created before
-step 4 rather than reordering anything the PRD mandates.
+Step 4 is not in the PRD's numbered order for container provisioning. Folders
+and custom templates are prerequisites — variables and tags reference them —
+so they are created before step 5 rather than reordering anything the PRD
+mandates.
 
 ## Why the trigger remapping matters
 
@@ -57,10 +62,17 @@ Then, all of which stay out of git:
 
 ### Service account permission
 
-The service account's email must be added to the **GTM account** — not just to
-a container — with publish permission. Account-level access is what allows a
-new container to be created; container-level access is not enough and produces
-an HTTP 403.
+Two separate grants are needed, in two separate admin UIs — neither implies
+the other:
+
+- The service account's email must be added to the **GTM account** (not just
+  a container) with publish permission. Account-level access is what allows a
+  new container to be created; container-level access is not enough and
+  produces an HTTP 403.
+- The same service account's email must also be added to the **GA4 Account**
+  configured under `ga4.account_id`, from Google Analytics' own
+  **Admin → Account Access Management**, with Editor access. Without it,
+  creating a property returns an HTTP 403 naming this exact requirement.
 
 Creating the GCP project and service account this key belongs to, including
 the Google Workspace/Cloud Identity setup behind it, is documented separately
@@ -96,6 +108,20 @@ The two Constant variable names in `config.yaml` must match the template
 exactly. If they do not, the run stops before any container is created and
 lists the Constant variables the template does contain.
 
+### GA4 property naming and the Measurement ID prefix
+
+The store's website domain (e.g. `store.shopshop.la`, no `https://` or path)
+is used as both the GTM container name and the GA4 property/stream display
+name, matching the convention already in use for existing properties. It also
+becomes the web data stream's `defaultUri` (as `https://<domain>`).
+
+The Analytics Admin API returns the Measurement ID **without** its `G-`
+prefix (e.g. `1A2BCD345E`, not `G-1A2BCD345E`). `ga4_client.py` adds it back
+and validates the result before it goes anywhere near the container — a
+silently mishandled prefix here would be the same failure mode as the trigger
+ID remapping: no error, just a container permanently wired to the wrong GA4
+property.
+
 ## Running
 
 ```bash
@@ -103,16 +129,16 @@ lists the Constant variables the template does contain.
 .venv/bin/python provision_gtm.py
 
 # unattended
-.venv/bin/python provision_gtm.py \
-  --name "BRAND-A | Web" --ga4 G-XXXXXXXXXX --pixel 123456789012345
+.venv/bin/python provision_gtm.py --domain store.shopshop.la --pixel 123456789012345
 
-# validate config, input and template without touching the GTM API
+# validate config, input and template without touching the GTM or GA4 API
 .venv/bin/python provision_gtm.py --dry-run
 ```
 
 `--dry-run` needs no credentials. It runs every consistency check the live run
 would hit mid-flight, so a freshly exported template can be validated before
-any container exists.
+any container or GA4 property exists. No GA4 property is created in a dry
+run; a placeholder Measurement ID stands in for the real one.
 
 Exit codes: `0` success, `1` provisioning failed, `2` bad config, input or
 template.
@@ -128,13 +154,20 @@ The script exiting cleanly is not the acceptance test. Per PRD section 9:
    prints this comparison.
 3. Install the container ID on the store's site and confirm in GTM Preview mode
    that the tags fire.
-4. Confirm the GA4 Measurement ID and Meta Pixel ID belong to this store.
+4. Confirm the created GA4 property's Measurement ID and the Meta Pixel ID
+   belong to this store.
 
 ## If a run fails
 
-There is no automatic rollback in v1. On failure the script prints the failing
-step, the entity it was processing, and — if the container was already created
-— its public ID and path, so it can be deleted or repaired in the GTM UI.
+There is no automatic rollback. On failure the script prints the failing
+step, the entity it was processing, and:
+
+- if the GTM container was already created, its public ID and path, so it
+  can be deleted or repaired in the GTM UI
+- if the GA4 property was created but its web data stream creation then
+  failed, the property's resource name, so it can be deleted or repaired in
+  Google Analytics — this is checked before the GTM container is even
+  created, so a failure here never leaves a broken GTM container behind
 
 ## Tests
 
@@ -143,8 +176,10 @@ step, the entity it was processing, and — if the container was already created
 .venv/bin/python -m pytest
 ```
 
-The suite runs entirely against a fake GTM API. The fake hands out IDs unlike
-the template's, so any tag that keeps a template trigger ID fails a test.
+The suite runs entirely against fake GTM and GA4 APIs. The fake GTM client
+hands out IDs unlike the template's, so any tag that keeps a template trigger
+ID fails a test; the fake GA4 responses cover the missing-prefix and
+orphaned-property failure modes explicitly.
 
 ## Layout
 
@@ -152,14 +187,18 @@ the template's, so any tag that keeps a template trigger ID fails a test.
 |---|---|---|
 | `provision_gtm.py` | CLI entry point | yes |
 | `gtm_provisioner/store_inputs.py` | where the store IDs come from | yes |
+| `gtm_provisioner/ga4_client.py` | GA4 property/stream creation | yes |
+| `gtm_provisioner/api_retry.py` | shared retry/backoff/throttle for both API clients | yes |
 | `gtm_provisioner/template.py` | template parsing and offline audit | yes |
 | `gtm_provisioner/remap.py` | trigger, folder and custom template ID maps | yes |
-| `gtm_provisioner/gtm_client.py` | API wrapper, retry and throttling | yes |
-| `gtm_provisioner/provisioner.py` | the seven steps | yes |
-| `config.yaml` | account ID and local paths | no |
-| `secrets/service-account.json` | GTM API credentials | no |
+| `gtm_provisioner/gtm_client.py` | GTM API wrapper | yes |
+| `gtm_provisioner/provisioner.py` | the GTM container provisioning steps | yes |
+| `config.yaml` | account IDs and local paths | no |
+| `secrets/service-account.json` | GTM and GA4 API credentials | no |
 | `templates/golden-container.json` | contains client analytics IDs | no |
 
-`store_inputs.py` is the only module that knows how the GA4 and Pixel IDs are
-obtained. v2 replaces its body with GA4 Admin API and Meta Marketing API calls
-and touches nothing else.
+`store_inputs.py` is the only module that knows how the GA4 Measurement ID
+and Meta Pixel ID are obtained: the website domain resolves to a Measurement
+ID via `ga4_client.py`, while the Pixel ID is still operator-supplied. A
+future step to create the Meta Pixel itself (via the Meta Marketing API)
+would extend this module the same way, without touching GTM provisioning.

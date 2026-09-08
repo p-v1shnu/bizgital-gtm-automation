@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
 """Provision a fully configured, published GTM container for one store.
 
+Also creates the store's GA4 property and web data stream, feeding the
+resulting Measurement ID straight into the container - the operator only
+supplies the store's website domain and its Meta Pixel ID.
+
 Usage:
     python provision_gtm.py
-    python provision_gtm.py --name "BRAND-A | Web" --ga4 G-XXXXXXXXXX --pixel 123456789012345
+    python provision_gtm.py --domain store.shopshop.la --pixel 123456789012345
     python provision_gtm.py --dry-run
 """
 
@@ -12,6 +16,7 @@ import sys
 
 from gtm_provisioner.config import DEFAULT_CONFIG_PATH, check_local_files, load_config
 from gtm_provisioner.errors import ConfigError, ProvisioningError, ValidationError
+from gtm_provisioner.ga4_client import Ga4Client
 from gtm_provisioner.gtm_client import GtmClient
 from gtm_provisioner.provisioner import Provisioner
 from gtm_provisioner.store_inputs import collect_store_inputs
@@ -27,13 +32,19 @@ def parse_args(argv=None):
         description="Create and publish a GTM container from the golden template."
     )
     parser.add_argument("--config", default=DEFAULT_CONFIG_PATH, help="path to config.yaml")
-    parser.add_argument("--name", help="store / container name; prompted for if omitted")
-    parser.add_argument("--ga4", help="GA4 Measurement ID; prompted for if omitted")
+    parser.add_argument(
+        "--domain",
+        help=(
+            "store website domain, e.g. store.shopshop.la; prompted for if "
+            "omitted. Used as both the GTM container name and the GA4 "
+            "property name"
+        ),
+    )
     parser.add_argument("--pixel", help="Meta Pixel ID; prompted for if omitted")
     parser.add_argument(
         "--dry-run",
         action="store_true",
-        help="validate config, input and template without calling the GTM API",
+        help="validate config, input and template without calling the GTM or GA4 API",
     )
     parser.add_argument(
         "--yes",
@@ -73,14 +84,17 @@ def run(argv=None):
         return EXIT_BAD_SETUP
     print("  template audit: ok\n")
 
-    store = collect_store_inputs(args.name, args.ga4, args.pixel)
+    ga4_client = None if args.dry_run else Ga4Client.from_config(config)
+    store = collect_store_inputs(ga4_client, args.domain, args.pixel)
 
     if args.dry_run:
-        print("\nDry run - nothing was sent to the GTM API.")
-        print(f"  container name      {store.container_name}")
-        print(f"  GA4 Measurement ID  {store.ga4_measurement_id}")
+        print("\nDry run - nothing was sent to the GTM or GA4 API.")
+        print(f"  website domain      {store.container_name}")
+        print(f"  GA4 Measurement ID  {store.ga4_measurement_id} (placeholder)")
         print(f"  Meta Pixel ID       {store.meta_pixel_id}")
         return EXIT_OK
+
+    print(f"\nGA4 property created, Measurement ID: {store.ga4_measurement_id}\n")
 
     client = GtmClient.from_config(config)
     provisioner = Provisioner(

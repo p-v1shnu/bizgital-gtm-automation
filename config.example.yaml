@@ -20,6 +20,19 @@ variables:
   ga4_measurement_id: "GA4 Measurement ID"
   meta_pixel_id: "Meta Pixel ID"
 
+ga4:
+  # Numeric Google Analytics Account ID (Admin > Account settings) that new
+  # properties are created under. The service account needs Editor access on
+  # this account, granted separately from GA4's own Admin > Account Access
+  # Management - this is not the same permission grant as GTM's.
+  account_id: "1234567"
+  # IANA time zone id, not a country name - check what an existing property
+  # under this account actually has set if unsure.
+  timezone: "Asia/Vientiane"
+  currency_code: "USD"
+  # One of GA4's IndustryCategory enum values, e.g. SHOPPING, FOOD_AND_DRINK.
+  industry_category: "SHOPPING"
+
 api:
   # Retry with exponential backoff when GTM returns 429 or a 5xx.
   max_retries: 5

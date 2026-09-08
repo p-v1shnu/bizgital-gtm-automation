@@ -236,6 +236,19 @@ Container) → **User Management → +** เพิ่ม 2 คน เป็น *
 container ใหม่** ซึ่งสิทธิ์ระดับ container เพียงอย่างเดียวไม่พอ จะได้ HTTP
 403 กลับมา
 
+## ขั้นที่ 7 — เพิ่มสิทธิ์ใน GA4 (คนละระบบกับ GTM)
+
+เป็นคนละผลิตภัณฑ์ คนละหน้า Admin เลย — **การเป็น Administrator ใน GTM ไม่ได้
+แปลว่าจะมีสิทธิ์ใน GA4 ด้วย** ต้องไปเพิ่มแยกต่างหาก
+
+เข้า `analytics.google.com` → **Admin → Account Access Management** (ของ
+**Account** ที่ตั้งไว้ใน `ga4.account_id` เช่น `216060784` — ไม่ใช่หน้าของ
+Property) → เพิ่มอีเมล service account ตัวเดิม (`gtm-provisioner@...`) →
+ให้สิทธิ์ **Editor**
+
+ถ้าลืมขั้นนี้ ตอนสคริปต์พยายามสร้าง GA4 property จะได้ HTTP 403 กลับมา
+พร้อมข้อความบอกตรง ๆ ว่าต้องเพิ่มสิทธิ์ตรงนี้
+
 ---
 
 ## เช็คลิสต์สรุป
@@ -257,3 +270,7 @@ container ใหม่** ซึ่งสิทธิ์ระดับ container
       ถูกตัว, ลบ container ทดสอบทิ้งแล้ว. **ระบบพร้อมใช้กับร้านจริง**
 - [ ] (ทำทีหลังได้) ตัดสินใจเรื่องบัญชี `youtthasone@bizgital.com` ค้างไว้ —
       suspend หรือ delete
+- [ ] เพิ่มอีเมล service account เข้า **GA4 Account** (`ga4.account_id`) ที่
+      `analytics.google.com` → Admin → Account Access Management เป็น
+      Editor (คนละขั้นตอนกับสิทธิ์ GTM ข้างบน — ต้องทำเพิ่มก่อนใช้ฟีเจอร์
+      สร้าง GA4 property อัตโนมัติ)

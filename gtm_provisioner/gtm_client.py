@@ -1,38 +1,28 @@
 """A thin wrapper over the Tag Manager API v2.
 
-Everything goes through `_execute`, which throttles requests and retries the
-transient failures the GTM quota produces when several dozen entities are
-created back to back.
+Everything goes through `_execute` (see api_retry.RetryingApiClient), which
+throttles requests and retries the transient failures the GTM quota produces
+when several dozen entities are created back to back.
 """
-
-import random
-import ssl
-import time
 
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
-from googleapiclient.errors import HttpError
 
+from .api_retry import RetryingApiClient
 from .errors import ConfigError, ProvisioningError
-
-RETRYABLE_STATUS_CODES = frozenset({429, 500, 502, 503, 504})
-
-# A dropped connection or a read timing out never reaches HttpError - it fails
-# before any HTTP response comes back, so it needs its own retry path.
-RETRYABLE_NETWORK_ERRORS = (TimeoutError, ConnectionError, ssl.SSLError)
 
 API_NAME = "tagmanager"
 API_VERSION = "v2"
 
 
-class GtmClient:
+class GtmClient(RetryingApiClient):
     """Authenticated access to one GTM account."""
 
     def __init__(self, service, config, log=print):
+        super().__init__()
         self._service = service
         self._config = config
         self._log = log
-        self._last_request_at = 0.0
 
     @classmethod
     def from_config(cls, config, log=print):
@@ -59,62 +49,8 @@ class GtmClient:
         )
         return cls(service, config, log=log)
 
-    # -- request plumbing ------------------------------------------------
-
-    def _throttle(self):
-        """Keep a minimum gap between requests to stay under the write quota."""
-        interval = self._config.request_interval_seconds
-        if interval <= 0:
-            return
-        elapsed = time.monotonic() - self._last_request_at
-        if elapsed < interval:
-            time.sleep(interval - elapsed)
-
-    def _execute(self, request, description):
-        """Run one API request, retrying transient failures with backoff."""
-        delay = self._config.initial_backoff_seconds
-        attempts = self._config.max_retries + 1
-
-        for attempt in range(1, attempts + 1):
-            self._throttle()
-            try:
-                response = request.execute()
-            except HttpError as exc:
-                self._last_request_at = time.monotonic()
-                status = exc.resp.status if exc.resp is not None else None
-                if status not in RETRYABLE_STATUS_CODES or attempt == attempts:
-                    raise ProvisioningError(self._describe(exc, status, description)) from exc
-                delay = self._wait_before_retry(
-                    f"hit HTTP {status}", description, delay, attempt, attempts
-                )
-            except RETRYABLE_NETWORK_ERRORS as exc:
-                self._last_request_at = time.monotonic()
-                if attempt == attempts:
-                    raise ProvisioningError(
-                        f"{description} failed with a network error: {exc}"
-                    ) from exc
-                delay = self._wait_before_retry(
-                    f"hit a network error ({exc})", description, delay, attempt, attempts
-                )
-            else:
-                self._last_request_at = time.monotonic()
-                return response
-
-        raise ProvisioningError(f"{description} exhausted all retries.")
-
-    def _wait_before_retry(self, reason, description, delay, attempt, attempts):
-        """Sleep with jittered backoff and return the next delay to use."""
-        wait = min(delay, self._config.max_backoff_seconds)
-        wait *= 1.0 + random.random() * 0.25  # jitter, to de-sync retries
-        self._log(
-            f"    ~ {description} {reason}; "
-            f"retrying in {wait:.1f}s (attempt {attempt}/{attempts})"
-        )
-        time.sleep(wait)
-        return min(delay * 2, self._config.max_backoff_seconds)
-
     @staticmethod
-    def _describe(exc, status, description):
+    def _describe_http_error(exc, status, description):
         message = f"{description} failed with HTTP {status}: {exc}"
         if status == 403:
             message += (

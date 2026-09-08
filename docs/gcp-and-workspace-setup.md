@@ -108,3 +108,12 @@ container) → **User Management → +**, add both, each as **Administrator**:
 Account-level access is required specifically because the script *creates*
 new containers; container-level access is not enough and produces an HTTP
 403 from the API.
+
+## GA4 permissions
+
+Separate product, separate admin UI, separate grant — being a GTM
+Administrator implies nothing here. In `analytics.google.com` →
+**Admin → Account Access Management** (for the GA4 Account configured under
+`ga4.account_id`, not a property), add the same service account email with
+**Editor** access. Without it, creating a property returns an HTTP 403
+naming this exact requirement.

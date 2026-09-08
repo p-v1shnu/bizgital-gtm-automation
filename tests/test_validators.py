@@ -2,20 +2,35 @@ import pytest
 
 from gtm_provisioner.errors import ValidationError
 from gtm_provisioner.validators import (
-    validate_container_name,
     validate_ga4_measurement_id,
     validate_meta_pixel_id,
+    validate_website_domain,
 )
 
 
-def test_container_name_is_trimmed():
-    assert validate_container_name("  BRAND-A | Web  ") == "BRAND-A | Web"
+def test_website_domain_is_trimmed():
+    assert validate_website_domain("  store.shopshop.la  ") == "store.shopshop.la"
 
 
-@pytest.mark.parametrize("value", ["", "   ", None, "x" * 101])
-def test_container_name_rejects_empty_and_overlong(value):
+@pytest.mark.parametrize(
+    "value, expected",
+    [
+        ("https://store.shopshop.la", "store.shopshop.la"),
+        ("http://store.shopshop.la/", "store.shopshop.la"),
+        ("HTTPS://Store.Shopshop.La", "Store.Shopshop.La"),
+    ],
+)
+def test_website_domain_strips_scheme_and_trailing_slash(value, expected):
+    assert validate_website_domain(value) == expected
+
+
+@pytest.mark.parametrize(
+    "value",
+    ["", "   ", None, "x" * 101, "no-dot-at-all", "-leading-hyphen.com", "trailing-.com"],
+)
+def test_website_domain_rejects_empty_overlong_and_malformed(value):
     with pytest.raises(ValidationError):
-        validate_container_name(value)
+        validate_website_domain(value)
 
 
 def test_ga4_id_is_upper_cased():
