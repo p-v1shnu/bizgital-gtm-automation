@@ -4,6 +4,9 @@ One-time setup notes for the account and project this script authenticates
 against. Most of this only needs to happen once per Google Cloud
 organization, not once per store.
 
+A more detailed, narrative walkthrough of the same setup is available in
+Thai at [`gcp-and-workspace-setup.th.md`](gcp-and-workspace-setup.th.md).
+
 ## Background: why a domain claim was needed
 
 `bizgital.com` had no Google Workspace or Cloud Identity organization when
