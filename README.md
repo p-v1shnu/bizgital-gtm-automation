@@ -66,6 +66,20 @@ Creating the GCP project and service account this key belongs to, including
 the Google Workspace/Cloud Identity setup behind it, is documented separately
 in [`docs/gcp-and-workspace-setup.md`](docs/gcp-and-workspace-setup.md).
 
+### Other admins only get read access to a newly created container
+
+GTM has two separate permission layers: account-level (Admin/User) and
+container-level (No Access/Read/Edit/Approve/Publish). Account Admin does not
+imply Publish on a container it didn't create — only the service account,
+as the container's creator, gets full access automatically. Every other
+account admin starts with a lower default on that specific new container and
+needs an explicit container-level grant to edit or publish it.
+
+This is deliberate, not a bug: PRD section 3 lists "manage container user
+permissions" as out of scope for v1. An operator who needs to edit or publish
+a container this script created adds themselves under that container's own
+**User Management** (not the account's) in the GTM UI.
+
 ### The template file
 
 Either shape works:
