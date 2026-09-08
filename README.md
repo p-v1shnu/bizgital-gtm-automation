@@ -115,12 +115,13 @@ is used as both the GTM container name and the GA4 property/stream display
 name, matching the convention already in use for existing properties. It also
 becomes the web data stream's `defaultUri` (as `https://<domain>`).
 
-The Analytics Admin API returns the Measurement ID **without** its `G-`
-prefix (e.g. `1A2BCD345E`, not `G-1A2BCD345E`). `ga4_client.py` adds it back
-and validates the result before it goes anywhere near the container — a
-silently mishandled prefix here would be the same failure mode as the trigger
-ID remapping: no error, just a container permanently wired to the wrong GA4
-property.
+Google's docs describe the Measurement ID as returned **without** its `G-`
+prefix (e.g. `1A2BCD345E`, not `G-1A2BCD345E`), but a live property created
+against v1beta returned it already prefixed. `ga4_client.py` checks for the
+prefix rather than assuming either way, and validates the result before it
+goes anywhere near the container — a silently mishandled prefix here would be
+the same failure mode as the trigger ID remapping: no error, just a container
+permanently wired to the wrong GA4 property.
 
 ## Running
 

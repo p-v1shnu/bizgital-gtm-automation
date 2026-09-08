@@ -94,11 +94,20 @@ def test_the_stream_is_created_under_the_new_property_with_an_https_uri(ga4_conf
     assert call["body"]["webStreamData"]["defaultUri"] == "https://store.shopshop.la"
 
 
-def test_the_measurement_id_gets_its_g_prefix_back(ga4_config):
+def test_an_unprefixed_measurement_id_gets_its_g_prefix_added(ga4_config):
     _, client = make_client(
         ga4_config, stream_result={"webStreamData": {"measurementId": "1A2BCD345E"}}
     )
     assert client.create_property_and_stream("store.shopshop.la") == "G-1A2BCD345E"
+
+
+def test_an_already_prefixed_measurement_id_is_not_double_prefixed(ga4_config):
+    """A live v1beta property returned it already prefixed, contrary to
+    Google's own docs - trust what the API actually sends, not the docs."""
+    _, client = make_client(
+        ga4_config, stream_result={"webStreamData": {"measurementId": "G-HCCPEM777F"}}
+    )
+    assert client.create_property_and_stream("store.shopshop.la") == "G-HCCPEM777F"
 
 
 def test_a_response_with_no_measurement_id_is_a_fatal_error(ga4_config):

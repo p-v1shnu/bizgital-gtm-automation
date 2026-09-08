@@ -70,9 +70,10 @@ class Ga4Client(RetryingApiClient):
     def create_property_and_stream(self, website_domain):
         """Create a GA4 property and web data stream, return its Measurement ID.
 
-        The Measurement ID the API returns has no 'G-' prefix - it's added
-        back here so callers always get the same G-XXXXXXXXXX form GTM and
-        the rest of this codebase expect.
+        Google's own docs describe `measurementId` as returned without its
+        "G-" prefix, but a live property created against v1beta returned it
+        already prefixed - so the prefix is added only when it's actually
+        missing, rather than assumed either way.
         """
         property_ = self._create_property(website_domain)
         try:
@@ -91,16 +92,16 @@ class Ga4Client(RetryingApiClient):
                 "response carried no measurementId.",
                 entity=website_domain,
             )
+        prefixed = measurement_id if measurement_id.upper().startswith("G-") else f"G-{measurement_id}"
         try:
-            # The API returns the ID without its "G-" prefix; add it back and
-            # confirm the result still looks like a real Measurement ID before
+            # Confirm the result still looks like a real Measurement ID before
             # it goes anywhere near the container template.
-            return validate_ga4_measurement_id(f"G-{measurement_id}")
+            return validate_ga4_measurement_id(prefixed)
         except ValidationError as exc:
             raise ProvisioningError(
                 f"GA4 returned measurementId {measurement_id!r} for "
                 f"{website_domain!r}, which does not look like a valid "
-                "Measurement ID once prefixed.",
+                "Measurement ID.",
                 entity=website_domain,
             ) from exc
 
