@@ -62,6 +62,10 @@ a container — with publish permission. Account-level access is what allows a
 new container to be created; container-level access is not enough and produces
 an HTTP 403.
 
+Creating the GCP project and service account this key belongs to, including
+the Google Workspace/Cloud Identity setup behind it, is documented separately
+in [`docs/gcp-and-workspace-setup.md`](docs/gcp-and-workspace-setup.md).
+
 ### The template file
 
 Either shape works:
