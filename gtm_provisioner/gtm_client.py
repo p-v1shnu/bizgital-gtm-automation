@@ -6,6 +6,7 @@ created back to back.
 """
 
 import random
+import ssl
 import time
 
 from google.oauth2 import service_account
@@ -15,6 +16,10 @@ from googleapiclient.errors import HttpError
 from .errors import ConfigError, ProvisioningError
 
 RETRYABLE_STATUS_CODES = frozenset({429, 500, 502, 503, 504})
+
+# A dropped connection or a read timing out never reaches HttpError - it fails
+# before any HTTP response comes back, so it needs its own retry path.
+RETRYABLE_NETWORK_ERRORS = (TimeoutError, ConnectionError, ssl.SSLError)
 
 API_NAME = "tagmanager"
 API_VERSION = "v2"
@@ -79,19 +84,34 @@ class GtmClient:
                 status = exc.resp.status if exc.resp is not None else None
                 if status not in RETRYABLE_STATUS_CODES or attempt == attempts:
                     raise ProvisioningError(self._describe(exc, status, description)) from exc
-                wait = min(delay, self._config.max_backoff_seconds)
-                wait *= 1.0 + random.random() * 0.25  # jitter, to de-sync retries
-                self._log(
-                    f"    ~ {description} hit HTTP {status}; "
-                    f"retrying in {wait:.1f}s (attempt {attempt}/{attempts})"
+                delay = self._wait_before_retry(
+                    f"hit HTTP {status}", description, delay, attempt, attempts
                 )
-                time.sleep(wait)
-                delay = min(delay * 2, self._config.max_backoff_seconds)
+            except RETRYABLE_NETWORK_ERRORS as exc:
+                self._last_request_at = time.monotonic()
+                if attempt == attempts:
+                    raise ProvisioningError(
+                        f"{description} failed with a network error: {exc}"
+                    ) from exc
+                delay = self._wait_before_retry(
+                    f"hit a network error ({exc})", description, delay, attempt, attempts
+                )
             else:
                 self._last_request_at = time.monotonic()
                 return response
 
         raise ProvisioningError(f"{description} exhausted all retries.")
+
+    def _wait_before_retry(self, reason, description, delay, attempt, attempts):
+        """Sleep with jittered backoff and return the next delay to use."""
+        wait = min(delay, self._config.max_backoff_seconds)
+        wait *= 1.0 + random.random() * 0.25  # jitter, to de-sync retries
+        self._log(
+            f"    ~ {description} {reason}; "
+            f"retrying in {wait:.1f}s (attempt {attempt}/{attempts})"
+        )
+        time.sleep(wait)
+        return min(delay * 2, self._config.max_backoff_seconds)
 
     @staticmethod
     def _describe(exc, status, description):
