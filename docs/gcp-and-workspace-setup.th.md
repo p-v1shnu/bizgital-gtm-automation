@@ -250,8 +250,10 @@ container ใหม่** ซึ่งสิทธิ์ระดับ container
 - [x] เปิด Tag Manager API
 - [x] สร้าง Service Account
 - [x] แก้ Organization Policy ที่บล็อกการสร้าง key → สร้าง key สำเร็จ
-- [ ] เพิ่ม `pele@bizgital.com` และอีเมล service account เข้า GTM Account
+- [x] เพิ่ม `pele@bizgital.com` และอีเมล service account เข้า GTM Account
       เป็น Administrator
-- [ ] รัน `provision_gtm.py --dry-run` แล้วรันจริง
+- [x] รัน `provision_gtm.py --dry-run` แล้วรันจริง — สร้าง container ทดสอบ
+      สำเร็จ, entity count ตรงครบ, ตรวจด้วยตาแล้วว่าทุก tag ผูก trigger
+      ถูกตัว, ลบ container ทดสอบทิ้งแล้ว. **ระบบพร้อมใช้กับร้านจริง**
 - [ ] (ทำทีหลังได้) ตัดสินใจเรื่องบัญชี `youtthasone@bizgital.com` ค้างไว้ —
       suspend หรือ delete
