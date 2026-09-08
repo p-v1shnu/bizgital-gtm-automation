@@ -121,6 +121,8 @@ def config(tmp_path):
         ga4_variable_name="GA4 Measurement ID",
         meta_pixel_variable_name="Meta Pixel ID",
         ga4_account_id="216060784",
+        meta_ad_account_id="1451413912465476",
+        meta_access_token_path=str(tmp_path / "meta-access-token.txt"),
         request_interval_seconds=0.0,
         warn_on_duplicate_name=False,
     )

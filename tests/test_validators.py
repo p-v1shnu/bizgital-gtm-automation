@@ -4,8 +4,19 @@ from gtm_provisioner.errors import ValidationError
 from gtm_provisioner.validators import (
     validate_ga4_measurement_id,
     validate_meta_pixel_id,
+    validate_store_name,
     validate_website_domain,
 )
+
+
+def test_store_name_is_trimmed():
+    assert validate_store_name("  ShopShop Pigeon  ") == "ShopShop Pigeon"
+
+
+@pytest.mark.parametrize("value", ["", "   ", None, "x" * 101])
+def test_store_name_rejects_empty_and_overlong(value):
+    with pytest.raises(ValidationError):
+        validate_store_name(value)
 
 
 def test_website_domain_is_trimmed():

@@ -31,6 +31,8 @@ class Config:
     ga4_variable_name: str
     meta_pixel_variable_name: str
     ga4_account_id: str
+    meta_ad_account_id: str
+    meta_access_token_path: str
     impersonate_subject: str = ""
     scopes: tuple = DEFAULT_SCOPES
     max_retries: int = 5
@@ -80,6 +82,7 @@ def load_config(path=DEFAULT_CONFIG_PATH):
     api = raw.get("api") or {}
     behaviour = raw.get("behaviour") or {}
     ga4 = raw.get("ga4") or {}
+    meta = raw.get("meta") or {}
 
     base_dir = os.path.dirname(os.path.abspath(path))
 
@@ -104,6 +107,8 @@ def load_config(path=DEFAULT_CONFIG_PATH):
         ga4_timezone=str(ga4.get("timezone") or "Asia/Vientiane"),
         ga4_currency_code=str(ga4.get("currency_code") or "USD"),
         ga4_industry_category=str(ga4.get("industry_category") or "SHOPPING"),
+        meta_ad_account_id=str(_require(meta, "ad_account_id", "meta")),
+        meta_access_token_path=resolve(str(_require(meta, "access_token_path", "meta"))),
         extra=raw,
     )
 
@@ -117,6 +122,7 @@ def check_local_files(config):
     for label, file_path in (
         ("paths.service_account_key", config.service_account_key_path),
         ("paths.template", config.template_path),
+        ("meta.access_token_path", config.meta_access_token_path),
     ):
         if not os.path.isfile(file_path):
             raise ConfigError(f"File for '{label}' not found at {file_path!r}.")

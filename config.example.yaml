@@ -33,6 +33,17 @@ ga4:
   # One of GA4's IndustryCategory enum values, e.g. SHOPPING, FOOD_AND_DRINK.
   industry_category: "SHOPPING"
 
+meta:
+  # Numeric Meta Ads ad account ID (Business Settings > Accounts > Ad
+  # accounts), without the "act_" prefix. May change if a client brand gets
+  # its own ad account later.
+  ad_account_id: "1234567890123456"
+  # Path to a text file holding nothing but a Meta System User access token
+  # with the ads_management permission, and access to the ad account above
+  # (Business Settings > System Users > Assigned assets). Never commit this
+  # file - it is a bearer credential, like the service account key.
+  access_token_path: "secrets/meta-access-token.txt"
+
 api:
   # Retry with exponential backoff when GTM returns 429 or a 5xx.
   max_retries: 5

@@ -43,6 +43,24 @@ def validate_website_domain(value):
     return domain
 
 
+def validate_store_name(value):
+    """Return the trimmed store name, or raise ValidationError.
+
+    This is the human-readable name used to label the Meta Pixel (as
+    "<name> - Dataset"); it is separate from the website domain, which
+    labels the GA4 property and GTM container instead.
+    """
+    name = (value or "").strip()
+    if not name:
+        raise ValidationError("Store name must not be empty.")
+    if len(name) > MAX_CONTAINER_NAME_LENGTH:
+        raise ValidationError(
+            f"Store name must be at most {MAX_CONTAINER_NAME_LENGTH} "
+            f"characters (got {len(name)})."
+        )
+    return name
+
+
 def validate_ga4_measurement_id(value):
     """Return the normalised GA4 Measurement ID, or raise ValidationError."""
     measurement_id = (value or "").strip().upper()
@@ -62,7 +80,12 @@ def validate_ga4_measurement_id(value):
 
 
 def validate_meta_pixel_id(value):
-    """Return the normalised Meta Pixel ID, or raise ValidationError."""
+    """Return the normalised Meta Pixel ID, or raise ValidationError.
+
+    Used to sanity-check the ID meta_client.py gets back from creating a
+    pixel, the same way validate_ga4_measurement_id checks GA4's response,
+    rather than to validate operator input directly.
+    """
     pixel_id = (value or "").strip()
     if not pixel_id:
         raise ValidationError("Meta Pixel ID must not be empty.")
