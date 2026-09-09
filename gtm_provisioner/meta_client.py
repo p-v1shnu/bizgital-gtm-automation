@@ -50,14 +50,26 @@ class MetaClient:
         return cls(token, config, log=log)
 
     def create_pixel(self, name):
-        """Create a pixel (dataset) under the configured ad account.
+        """Create a pixel under the configured Business, then share it to the
+        configured ad account. Returns its ID.
 
-        Returns its ID, validated with the same rules that used to check an
-        operator-typed Pixel ID directly - a malformed ID here would
+        Pixel *ownership* and ad-account *usage* are separate things in
+        Meta's model. `POST /act_<id>/adspixels` makes the ad account itself
+        the pixel's owner - and an ad account can only ever own one pixel
+        that way, so a second store's pixel creation fails outright with
+        "(#6200) A pixel already exists for this account". A Business
+        Portfolio can own up to 100 pixels, so pixels are created there
+        instead and then shared to the ad account that runs traffic for
+        them - the same relationship every pixel created by hand in
+        Business Manager already has (owner: the Business; the ad account
+        appears only under that pixel's "Ad accounts" sharing list).
+
+        The returned ID is validated with the same rules that used to check
+        an operator-typed Pixel ID directly - a malformed ID here would
         otherwise become a container silently wired to nothing.
         """
         response = self._post(
-            f"{GRAPH_API_BASE}/act_{self._config.meta_ad_account_id}/adspixels",
+            f"{GRAPH_API_BASE}/{self._config.meta_business_id}/adspixels",
             {"name": name},
             f"creating Meta pixel {name!r}",
         )
@@ -68,13 +80,29 @@ class MetaClient:
                 entity=name,
             )
         try:
-            return validate_meta_pixel_id(str(pixel_id))
+            validated_id = validate_meta_pixel_id(str(pixel_id))
         except ValidationError as exc:
             raise ProvisioningError(
                 f"Meta returned pixel id {pixel_id!r} for {name!r}, which does "
                 "not look like a valid Pixel ID.",
                 entity=name,
             ) from exc
+
+        try:
+            self._post(
+                f"{GRAPH_API_BASE}/{validated_id}/shared_accounts",
+                {"account_id": f"act_{self._config.meta_ad_account_id}"},
+                f"sharing Meta pixel {validated_id} with the configured ad account",
+            )
+        except ProvisioningError as exc:
+            raise ProvisioningError(
+                f"{exc}\n    Pixel {validated_id} ({name!r}) was created under "
+                f"the Business but is not shared with any ad account yet: fix "
+                "sharing by hand in Business Manager, or delete the pixel and "
+                "retry.",
+                entity=name,
+            ) from exc
+        return validated_id
 
     # -- request plumbing -------------------------------------------------
 
@@ -140,9 +168,12 @@ class MetaClient:
         message = f"{description} failed with HTTP {status}: {detail}"
         if status in (400, 403):
             message += (
-                "\n    Hint: check that the System User has 'Full access' to "
-                "the ad account under 'meta.ad_account_id' in config.yaml, and "
-                "that the token in 'meta.access_token_path' has the "
-                "ads_management permission and has not expired or been revoked."
+                "\n    Hint: pixel creation needs the System User to have "
+                "access to create pixels under 'meta.business_id'; sharing a "
+                "pixel needs 'Full access' to the ad account under "
+                "'meta.ad_account_id'. Both are granted separately in "
+                "Business Settings. Also check that the token in "
+                "'meta.access_token_path' has the ads_management permission "
+                "and has not expired or been revoked."
             )
         return message

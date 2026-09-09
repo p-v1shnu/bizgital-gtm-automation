@@ -59,16 +59,34 @@ expiration เลือก **Never** → permission เลือกแค่ **`
 ทันที (ในไฟล์มีแค่ token อย่างเดียว ไม่ใส่อะไรอื่น) — ปิดหน้าไปแล้วดูซ้ำ
 ไม่ได้ ต้อง revoke แล้วสร้างใหม่เท่านั้น
 
-## ขั้นที่ 4 — Assign Ad Account
+## ขั้นที่ 4 — Assign Business Portfolio และ Ad Account
 
-ยังอยู่ที่หน้า System User ตัวเดิม → แท็บ **Assigned assets** → ช่อง
-search พิมพ์เลข ad account (ตัวเดียวกับที่จะใส่ใน `meta.ad_account_id`
-ของ `config.yaml` โดยไม่ต้องมี `act_` นำหน้า) → เพิ่มด้วยสิทธิ์
-**Full access**
+ยังอยู่ที่หน้า System User ตัวเดิม → แท็บ **Assigned assets** → ต้อง assign
+**2 อย่างแยกกัน** เพราะ "สร้าง pixel" กับ "ใช้งาน pixel" เป็นคนละ asset:
 
-ถ้าข้ามขั้นนี้ ต่อให้ token มี permission ถูกต้องก็ยังเรียก
-`POST /act_<id>/adspixels` ไม่ผ่าน จะได้ HTTP 403 กลับมา — permission
-ของ token กับสิทธิ์เข้าถึง asset เป็นคนละเรื่องที่ต้องผ่านทั้งคู่
+- search เลข Business Portfolio (ตัวเดียวกับที่จะใส่ใน `meta.business_id`
+  ของ `config.yaml`) → เพิ่มด้วยสิทธิ์สร้าง pixel ได้ — ตรงนี้คือที่ที่
+  `POST /<business_id>/adspixels` จะสร้าง pixel จริงๆ
+- search เลข ad account (ตัวเดียวกับที่จะใส่ใน `meta.ad_account_id` โดย
+  ไม่ต้องมี `act_` นำหน้า) → เพิ่มด้วยสิทธิ์ **Full access** — pixel ที่
+  สร้างเสร็จแต่ละตัวจะถูก share เข้า ad account นี้ทันที
+  (`POST /<pixel_id>/shared_accounts`) เพื่อให้แคมเปญบน ad account นี้
+  ใช้งานได้
+
+ถ้าข้าม assignment ไหนไป การเรียก API ส่วนนั้นจะได้ HTTP 403 กลับมา ต่อให้
+token มี permission ถูกต้องแล้วก็ตาม — permission ของ token กับสิทธิ์เข้าถึง
+asset เป็นคนละเรื่องที่ต้องผ่านทั้งคู่
+
+### ทำไมต้องแยกเป็น 2 asset
+
+ad account หนึ่งตัวเป็น "เจ้าของ" pixel ได้แค่ตัวเดียวเท่านั้น ถ้าเรียก
+`POST /act_<ad_account_id>/adspixels` เพื่อสร้าง pixel ให้ร้านที่สองด้วย
+ad account เดิม จะเจอ error `(#6200) A pixel already exists for this
+account` ทันที (เจอเองจริงตอนสร้างร้านที่สอง) แต่ **Business Portfolio
+เป็นเจ้าของ pixel ได้สูงสุด 100 ตัว** สคริปต์เลยสร้าง pixel ที่ Business
+ก่อนแล้วค่อย share ออกไป ตรงกับรูปแบบของ pixel ที่สร้างด้วยมือทุกตัวใน
+Business Manager อยู่แล้ว: **Owner** คือ Business ส่วน ad account จะไป
+โผล่แค่ในช่อง **Settings → Sharing → Ad accounts** ของ pixel นั้นเท่านั้น
 
 ---
 

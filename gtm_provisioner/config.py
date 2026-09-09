@@ -31,6 +31,7 @@ class Config:
     ga4_variable_name: str
     meta_pixel_variable_name: str
     ga4_account_id: str
+    meta_business_id: str
     meta_ad_account_id: str
     meta_access_token_path: str
     impersonate_subject: str = ""
@@ -107,6 +108,7 @@ def load_config(path=DEFAULT_CONFIG_PATH):
         ga4_timezone=str(ga4.get("timezone") or "Asia/Vientiane"),
         ga4_currency_code=str(ga4.get("currency_code") or "USD"),
         ga4_industry_category=str(ga4.get("industry_category") or "SHOPPING"),
+        meta_business_id=str(_require(meta, "business_id", "meta")),
         meta_ad_account_id=str(_require(meta, "ad_account_id", "meta")),
         meta_access_token_path=resolve(str(_require(meta, "access_token_path", "meta"))),
         extra=raw,

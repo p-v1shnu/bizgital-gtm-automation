@@ -169,7 +169,8 @@ Currently in `config.yaml` (see `config.example.yaml` for the annotated
 version) — all of this needs a home in Back Office's own config/secrets,
 not reused as files:
 
-- GTM account ID, GA4 account ID, Meta ad account ID
+- GTM account ID, GA4 account ID, Meta Business Portfolio ID, Meta ad
+  account ID
 - Google service account key (JSON)
 - Meta System User access token (see `docs/meta-marketing-api-setup.md` for
   the exact one-time setup this depends on — App, System User, token scope,
@@ -180,9 +181,14 @@ not reused as files:
   decide where this template is versioned once it's inside a real app —
   it defines every tag/trigger/variable a provisioned store gets)
 
-The Meta ad account ID may become per-brand rather than global later (open,
-not yet needed) — don't hardcode an assumption that one ad account serves
-every tenant forever.
+Pixels are created under the **Business Portfolio** ID, not the ad account —
+an ad account can only ever own one pixel of its own, discovered by hitting
+`(#6200) A pixel already exists for this account` on the second store
+provisioned during testing. Each pixel is created under the Business, then
+shared to the ad account (see `meta_client.py`'s `create_pixel` docstring
+and `docs/meta-marketing-api-setup.md`). Both IDs are currently global config
+values in this CLI, shared by every store; that may need to become per-brand
+later if a client brand gets its own ad account, but is not yet needed.
 
 ## 6. Open product decisions — do not guess these
 

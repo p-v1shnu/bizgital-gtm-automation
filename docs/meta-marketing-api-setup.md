@@ -58,15 +58,37 @@ The token is shown once. Copy it immediately into
 `secrets/meta-access-token.txt` (nothing else in the file) — there is no way
 to view it again, only to revoke it and generate a new one.
 
-## 4. Assign the ad account
+## 4. Assign the Business Portfolio and the ad account
 
-Still on the System User, tab **Assigned assets** → search by the ad
-account's numeric ID (the same one that goes in `meta.ad_account_id` in
-`config.yaml`, without the `act_` prefix) → add it with **Full access**.
+Still on the System User, tab **Assigned assets** → two separate assignments
+are needed, because pixel *creation* and pixel *usage* happen on two
+different assets:
 
-Without this, `POST /act_<id>/adspixels` returns an HTTP 403 even with a
-valid, correctly-scoped token — the token's permission and the System User's
-access to the specific asset are two separate checks.
+- search by the Business Portfolio's numeric ID (the same one that goes in
+  `meta.business_id` in `config.yaml`) → add it with access to create
+  pixels. This is where `POST /<business_id>/adspixels` actually creates
+  each pixel.
+- search by the ad account's numeric ID (the same one that goes in
+  `meta.ad_account_id`, without the `act_` prefix) → add it with **Full
+  access**. Each pixel created above is shared to this ad account right
+  after creation (`POST /<pixel_id>/shared_accounts`), so campaigns running
+  on that account can use it.
+
+Without either assignment, the corresponding call returns an HTTP 403 even
+with a valid, correctly-scoped token — the token's permission and the System
+User's access to the specific asset are two separate checks.
+
+### Why two assets, not one
+
+An ad account can only ever *own* one pixel of its own. Calling
+`POST /act_<ad_account_id>/adspixels` to create a second store's pixel
+against the same ad account fails with
+`(#6200) A pixel already exists for this account` — discovered by hitting it
+for real on the second store provisioned. A Business Portfolio can own up to
+100 pixels, so every pixel is created there and then shared out, exactly
+matching how a pixel made by hand in Business Manager already looks: its
+**Owner** is the Business, and the ad account only shows up under that
+pixel's own **Settings → Sharing → Ad accounts**.
 
 ## Naming
 

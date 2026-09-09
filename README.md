@@ -96,8 +96,24 @@ Meta pixel needs its own, entirely separate setup:
    be an Admin System User).
 3. Generate a token for that System User, scoped to the app from step 1 with
    the **`ads_management`** permission and no expiration.
-4. Under that System User's **Assigned assets**, add the ad account
-   configured under `meta.ad_account_id` with Full access.
+4. Under that System User's **Assigned assets**, add the Business Portfolio
+   configured under `meta.business_id` with access to create pixels — this
+   is where pixels are actually created (see "Pixel ownership" below).
+5. Also under **Assigned assets**, add the ad account configured under
+   `meta.ad_account_id` with Full access — this is where each created pixel
+   is shared to afterward, so campaigns on that account can use it.
+
+### Pixel ownership: the Business, not the ad account
+
+Pixels are created under `meta.business_id`, not `meta.ad_account_id`. An ad
+account can only ever *own* one pixel of its own — creating a second one
+under it fails with `(#6200) A pixel already exists for this account`, a
+failure discovered by hitting it for real on the second store provisioned.
+A Business Portfolio can own up to 100 pixels, so `meta_client.py` creates
+each pixel there and then shares it to the ad account, mirroring exactly how
+every pixel already made by hand in Business Manager is set up: **Owner** is
+the Business, and the ad account only appears under that pixel's own
+**Sharing → Ad accounts** list.
 
 `ads_management` may not appear when generating the token until the app's use
 case has actually requested it — if it's missing, go to the app's dashboard →
@@ -209,6 +225,9 @@ step, the entity it was processing, and:
 - if the GA4 property was created but its web data stream creation then
   failed, the property's resource name, so it can be deleted or repaired in
   Google Analytics
+- if the Meta pixel was created but sharing it to the ad account then
+  failed, the pixel's ID, so sharing can be fixed by hand in Business
+  Manager or the pixel deleted
 
 GA4 property creation runs first, then the Meta pixel, then the GTM
 container — each stage happens before the next resource is created, so a

@@ -34,9 +34,19 @@ ga4:
   industry_category: "SHOPPING"
 
 meta:
+  # Numeric Business Portfolio ID (Business Settings > Business Info) that
+  # owns every pixel this script creates. Pixels are created here, not
+  # under the ad account below - an ad account can only ever own one pixel
+  # of its own, so creating a second store's pixel under it fails with
+  # "(#6200) A pixel already exists for this account". A Business can own
+  # up to 100 pixels.
+  business_id: "1234567890123456"
   # Numeric Meta Ads ad account ID (Business Settings > Accounts > Ad
-  # accounts), without the "act_" prefix. May change if a client brand gets
-  # its own ad account later.
+  # accounts), without the "act_" prefix. Each pixel created above is
+  # shared to this ad account after creation, matching how every pixel
+  # made by hand in Business Manager is set up (owner: the Business above;
+  # this ad account listed under that pixel's "Ad accounts" sharing list).
+  # May change if a client brand gets its own ad account later.
   ad_account_id: "1234567890123456"
   # Path to a text file holding nothing but a Meta System User access token
   # with the ads_management permission, and access to the ad account above

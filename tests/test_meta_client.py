@@ -38,21 +38,30 @@ def client(meta_config):
     return MetaClient("fake-system-user-token", meta_config, log=lambda *_: None)
 
 
-def test_posts_to_the_configured_ad_account_with_the_name_and_token(monkeypatch, client):
+def test_creates_under_the_business_then_shares_with_the_ad_account(monkeypatch, client):
+    """An ad account can only ever own one pixel of its own - see
+    meta_client.py's create_pixel docstring for the "(#6200) A pixel
+    already exists for this account" failure this avoids. Pixels are
+    created under the Business, then shared to the ad account."""
     calls = []
 
     def fake_post(url, data, timeout):
         calls.append({"url": url, "data": data, "timeout": timeout})
-        return FakeResponse(200, {"id": "123456789012345"})
+        if url.endswith("/adspixels"):
+            return FakeResponse(200, {"id": "123456789012345"})
+        return FakeResponse(200, {"success": True})
 
     monkeypatch.setattr("gtm_provisioner.meta_client.requests.post", fake_post)
 
     pixel_id = client.create_pixel("ShopShop Pigeon - Dataset")
 
     assert pixel_id == "123456789012345"
-    assert calls[0]["url"] == f"{GRAPH_API_BASE}/act_1451413912465476/adspixels"
+    assert calls[0]["url"] == f"{GRAPH_API_BASE}/495054980697867/adspixels"
     assert calls[0]["data"]["name"] == "ShopShop Pigeon - Dataset"
     assert calls[0]["data"]["access_token"] == "fake-system-user-token"
+    assert calls[1]["url"] == f"{GRAPH_API_BASE}/123456789012345/shared_accounts"
+    assert calls[1]["data"]["account_id"] == "act_1451413912465476"
+    assert calls[1]["data"]["access_token"] == "fake-system-user-token"
 
 
 def test_a_response_with_no_id_is_a_fatal_error(monkeypatch, client):
@@ -87,7 +96,13 @@ def test_a_403_names_the_permission_and_asset_hint(monkeypatch, client):
 
 
 def test_retries_a_retryable_status_and_then_succeeds(monkeypatch, client):
-    responses = iter([FakeResponse(429, {"error": {"message": "rate limited"}}), FakeResponse(200, {"id": "123456789012345"})])
+    responses = iter(
+        [
+            FakeResponse(429, {"error": {"message": "rate limited"}}),
+            FakeResponse(200, {"id": "123456789012345"}),
+            FakeResponse(200, {"success": True}),
+        ]
+    )
     calls = []
 
     def fake_post(*a, **k):
@@ -97,7 +112,23 @@ def test_retries_a_retryable_status_and_then_succeeds(monkeypatch, client):
     monkeypatch.setattr("gtm_provisioner.meta_client.requests.post", fake_post)
 
     assert client.create_pixel("ShopShop Pigeon - Dataset") == "123456789012345"
-    assert len(calls) == 2
+    assert len(calls) == 3
+
+
+def test_a_failed_share_reports_the_orphaned_pixel(monkeypatch, client):
+    """The pixel was already created under the Business; the operator needs
+    its ID to fix sharing or delete it by hand, the same way an orphaned
+    GA4 property or GTM container is reported."""
+
+    def fake_post(url, data, timeout):
+        if url.endswith("/adspixels"):
+            return FakeResponse(200, {"id": "123456789012345"})
+        return FakeResponse(500, {"error": {"message": "boom"}})
+
+    monkeypatch.setattr("gtm_provisioner.meta_client.requests.post", fake_post)
+
+    with pytest.raises(ProvisioningError, match="123456789012345.*not shared"):
+        client.create_pixel("ShopShop Pigeon - Dataset")
 
 
 def test_a_network_error_retries_then_gives_up(monkeypatch, client):
