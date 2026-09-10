@@ -27,23 +27,32 @@ mode indefinitely and is only ever driven by a System User token.
 In `business.facebook.com` → Business Settings → **Users → System Users** →
 **Add**.
 
-Use **Employee** access, not Admin. Admin System Users have broad,
-business-wide administrative power; this task only needs to create pixels
-under one ad account, so Employee access plus a narrow asset assignment
-(step 4) is the least-privilege choice.
+Use **Admin** access. This contradicts the usual least-privilege advice, but
+it is not optional here — confirmed live, twice: an Employee System User
+with an `ads_management`-only token failed pixel creation with
+`(#10) ... MANAGE_PIXELS_AUDIT_NEEDED for this business account`; adding
+`business_management` to that same Employee System User's token changed
+nothing, same error. Switching to an Admin System User, no other change,
+fixed it immediately. Creating a brand-new pixel under a Business is
+apparently an admin-level action in Meta's permission model — no permission
+*scope* granted to an Employee System User's token unlocks it. Accept this
+as a real trade-off rather than spending more time trying to avoid it.
 
 ## 3. Generate a token
 
 On the System User → **Generate New Token** → select the app from step 1 →
-expiration **Never** → permissions: **`ads_management`** only.
+expiration **Never** → permissions: **`ads_management`** and
+**`business_management`**. `ads_management` covers sharing a created pixel
+to the ad account; `business_management` covers creating it under the
+Business in the first place.
 
-If `ads_management` doesn't appear in the permission list, it hasn't been
-requested by the app yet:
+If either permission doesn't appear in the list, it hasn't been requested by
+the app yet:
 
 1. Go to the app's dashboard (`developers.facebook.com` → the app) →
    **Use cases** → the "Create & manage ads" use case → **Permissions and
    features**.
-2. Find `ads_management` in the list. If its status isn't already
+2. Find the missing permission in the list. If its status isn't already
    **"Ready for testing"**, use its **Actions** menu to add it to the use
    case.
 3. "Ready for testing" *is* the state that's needed — it means Standard
@@ -52,43 +61,39 @@ requested by the app yet:
    **"Go to App Review"**: that's for Advanced Access (acting on other
    people's ad accounts), which this script never does, and isn't needed
    here.
-4. Go back to Generate Token; `ads_management` now appears.
+4. Go back to Generate Token; the permission now appears.
 
 The token is shown once. Copy it immediately into
 `secrets/meta-access-token.txt` (nothing else in the file) — there is no way
 to view it again, only to revoke it and generate a new one.
 
-## 4. Assign the Business Portfolio and the ad account
+## 4. Assign the ad account
 
-Still on the System User, tab **Assigned assets** → two separate assignments
-are needed, because pixel *creation* and pixel *usage* happen on two
-different assets:
+Still on the System User, tab **Assigned assets** → search by the ad
+account's numeric ID (the same one that goes in `meta.ad_account_id`,
+without the `act_` prefix) → add it with **Full access**. Each pixel created
+under the Business is shared to this ad account right after creation
+(`POST /<pixel_id>/shared_accounts`), so campaigns running on that account
+can use it. Without this assignment, sharing returns an HTTP 403 even with a
+correctly-scoped, Admin-owned token — the token's permission and the System
+User's access to this specific asset are two separate checks.
 
-- search by the Business Portfolio's numeric ID (the same one that goes in
-  `meta.business_id` in `config.yaml`) → add it with access to create
-  pixels. This is where `POST /<business_id>/adspixels` actually creates
-  each pixel.
-- search by the ad account's numeric ID (the same one that goes in
-  `meta.ad_account_id`, without the `act_` prefix) → add it with **Full
-  access**. Each pixel created above is shared to this ad account right
-  after creation (`POST /<pixel_id>/shared_accounts`), so campaigns running
-  on that account can use it.
+The sharing call's `account_id` parameter is the ad account's **plain
+numeric ID, with no `act_` prefix** — the one place in this whole setup that
+differs from every other ad-account reference. Sending it with `act_`
+prefixed returns `(#100) Param account_id must be a valid ID string`.
 
-Without either assignment, the corresponding call returns an HTTP 403 even
-with a valid, correctly-scoped token — the token's permission and the System
-User's access to the specific asset are two separate checks.
-
-### Why two assets, not one
+### Why the pixel lives on the Business, not the ad account
 
 An ad account can only ever *own* one pixel of its own. Calling
 `POST /act_<ad_account_id>/adspixels` to create a second store's pixel
 against the same ad account fails with
 `(#6200) A pixel already exists for this account` — discovered by hitting it
 for real on the second store provisioned. A Business Portfolio can own up to
-100 pixels, so every pixel is created there and then shared out, exactly
-matching how a pixel made by hand in Business Manager already looks: its
-**Owner** is the Business, and the ad account only shows up under that
-pixel's own **Settings → Sharing → Ad accounts**.
+100 pixels, so every pixel is created there (`POST /<business_id>/adspixels`)
+and then shared out, exactly matching how a pixel made by hand in Business
+Manager already looks: its **Owner** is the Business, and the ad account
+only shows up under that pixel's own **Settings → Sharing → Ad accounts**.
 
 ## Naming
 

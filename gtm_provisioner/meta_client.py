@@ -91,7 +91,7 @@ class MetaClient:
         try:
             self._post(
                 f"{GRAPH_API_BASE}/{validated_id}/shared_accounts",
-                {"account_id": f"act_{self._config.meta_ad_account_id}"},
+                {"account_id": self._config.meta_ad_account_id},
                 f"sharing Meta pixel {validated_id} with the configured ad account",
             )
         except ProvisioningError as exc:
@@ -166,14 +166,22 @@ class MetaClient:
         except ValueError:
             detail = response.text
         message = f"{description} failed with HTTP {status}: {detail}"
-        if status in (400, 403):
+        if "MANAGE_PIXELS_AUDIT_NEEDED" in detail:
             message += (
-                "\n    Hint: pixel creation needs the System User to have "
-                "access to create pixels under 'meta.business_id'; sharing a "
-                "pixel needs 'Full access' to the ad account under "
-                "'meta.ad_account_id'. Both are granted separately in "
-                "Business Settings. Also check that the token in "
-                "'meta.access_token_path' has the ads_management permission "
-                "and has not expired or been revoked."
+                "\n    Hint: creating a pixel under a Business needs an Admin "
+                "System User, not Employee - confirmed live, permission scope "
+                "alone (even with business_management) does not unlock it for "
+                "an Employee System User. See README.md's 'Meta System User "
+                "token and app' section."
+            )
+        elif status in (400, 403):
+            message += (
+                "\n    Hint: pixel creation needs an Admin System User (see "
+                "README.md); sharing a pixel needs 'Full access' to the ad "
+                "account under 'meta.ad_account_id', granted in Business "
+                "Settings. Also check that the token in "
+                "'meta.access_token_path' has the ads_management and "
+                "business_management permissions and has not expired or been "
+                "revoked."
             )
         return message

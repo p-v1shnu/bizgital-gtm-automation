@@ -92,16 +92,23 @@ Meta pixel needs its own, entirely separate setup:
    with Marketing API" use case, and claim it under the Business that owns
    the target ad account.
 2. In `business.facebook.com` → Business Settings → **Users → System Users**,
-   add one (Employee access is enough — least privilege; it does not need to
-   be an Admin System User).
-3. Generate a token for that System User, scoped to the app from step 1 with
-   the **`ads_management`** permission and no expiration.
-4. Under that System User's **Assigned assets**, add the Business Portfolio
-   configured under `meta.business_id` with access to create pixels — this
-   is where pixels are actually created (see "Pixel ownership" below).
-5. Also under **Assigned assets**, add the ad account configured under
-   `meta.ad_account_id` with Full access — this is where each created pixel
-   is shared to afterward, so campaigns on that account can use it.
+   add one **with Admin access**. Employee access is not enough — confirmed
+   live: an Employee System User with both `ads_management` and
+   `business_management` on its token still failed pixel creation with
+   `(#10) ... requires that you can MANAGE_PIXELS_AUDIT_NEEDED for this
+   business account`; switching the same setup to an Admin System User
+   fixed it immediately, with no other change. Creating a brand-new pixel is
+   apparently a business-admin-level action in Meta's model, not something a
+   permission scope alone can unlock for an Employee System User. This is a
+   real least-privilege trade-off, not a preference — accept it deliberately
+   rather than fighting it.
+3. Generate a token for that System User, scoped to the app from step 1,
+   with the **`ads_management`** and **`business_management`** permissions
+   and no expiration.
+4. Under that System User's **Assigned assets**, add the ad account
+   configured under `meta.ad_account_id` with Full access — each pixel
+   created is shared to this ad account right after creation, so campaigns
+   on that account can use it.
 
 ### Pixel ownership: the Business, not the ad account
 
@@ -113,7 +120,10 @@ A Business Portfolio can own up to 100 pixels, so `meta_client.py` creates
 each pixel there and then shares it to the ad account, mirroring exactly how
 every pixel already made by hand in Business Manager is set up: **Owner** is
 the Business, and the ad account only appears under that pixel's own
-**Sharing → Ad accounts** list.
+**Sharing → Ad accounts** list. The sharing call takes the ad account's
+plain numeric ID with no `act_` prefix — unlike every other ad-account
+reference in this project, confirmed by Meta rejecting the prefixed form
+with `(#100) Param account_id must be a valid ID string`.
 
 `ads_management` may not appear when generating the token until the app's use
 case has actually requested it — if it's missing, go to the app's dashboard →

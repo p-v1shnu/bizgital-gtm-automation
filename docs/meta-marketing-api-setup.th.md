@@ -30,63 +30,69 @@ consumer app) เราไม่ publish App นี้เลย ปล่อย�
 ไปที่ `business.facebook.com` → Business Settings → **Users → System
 Users** → **Add**
 
-เลือก **Employee access** ไม่ใช่ Admin — Admin System User มีอำนาจกว้าง
-ระดับทั้ง Business งานนี้แค่ต้องการสร้าง pixel ใน ad account เดียว การใช้
-Employee + จำกัดสิทธิ์เฉพาะ asset (ขั้นที่ 4) ปลอดภัยกว่าตามหลัก
-least privilege
+เลือก **Admin access** — ข้อนี้สวนทางกับหลัก least-privilege ที่เคยแนะนำไว้
+แต่ไม่ใช่ทางเลือกแล้ว: **เจอจริงมาแล้ว 2 รอบ** — ลอง System User แบบ
+Employee พร้อม token ที่มีแค่ `ads_management` ก็สร้าง pixel ไม่ผ่าน error
+`(#10) ... MANAGE_PIXELS_AUDIT_NEEDED for this business account`, ลองเพิ่ม
+`business_management` เข้าไปในตัว Employee เดิมก็ยัง error เดิมเป๊ะๆ
+ไม่เปลี่ยนอะไรเลย — พอเปลี่ยนเป็น Admin System User (ไม่แก้อย่างอื่นเลย)
+ผ่านทันที สรุปว่าการ "สร้าง pixel ใหม่" ในระดับ Business เป็นสิทธิ์ระดับ
+Admin ของ Meta เอง ไม่มี permission scope ไหนปลดล็อกให้ Employee System
+User ทำได้ ยอมรับ trade-off นี้ไปเลยดีกว่าเสียเวลาหาทางเลี่ยงต่อ
 
 ## ขั้นที่ 3 — สร้าง Token
 
 ที่ System User → **Generate New Token** → เลือก App จากขั้นที่ 1 →
-expiration เลือก **Never** → permission เลือกแค่ **`ads_management`**
+expiration เลือก **Never** → permission เลือก **`ads_management`** และ
+**`business_management`** ทั้งคู่ — `ads_management` ใช้ตอน share pixel
+เข้า ad account ส่วน `business_management` ใช้ตอนสร้าง pixel ที่ Business
 
-### ถ้า `ads_management` ไม่โผล่มาให้เลือก
+### ถ้า permission ตัวไหนไม่โผล่มาให้เลือก
 
-แปลว่า App ยังไม่ได้ "ขอ" permission ตัวนี้ไว้ ต้องไปเพิ่มก่อน:
+แปลว่า App ยังไม่ได้ "ขอ" permission ตัวนั้นไว้ ต้องไปเพิ่มก่อน:
 
 1. กลับไปที่หน้า Dashboard ของ App (`developers.facebook.com`) →
    **Use cases** → คลิกเข้า use case "Create & manage ads" → **Permissions
    and features**
-2. หา `ads_management` ในลิสต์ ถ้าสถานะยังไม่ขึ้น **"Ready for testing"**
+2. หา permission ที่ขาดในลิสต์ ถ้าสถานะยังไม่ขึ้น **"Ready for testing"**
    ให้ใช้เมนู **Actions** ข้าง ๆ เพื่อเพิ่มเข้า use case
 3. **"Ready for testing" คือสถานะที่ต้องการแล้ว** — แปลว่า Standard Access
    ปลดล็อกทันที (ใช้กับ ad account ของตัวเองได้เลย) ไม่ต้องทำอะไรเพิ่ม
    **ห้ามกด "Go to App Review"** เด็ดขาด เพราะอันนั้นสำหรับ Advanced
    Access (จัดการ ad account ของคนอื่น) ซึ่งสคริปต์นี้ไม่ได้ทำและไม่จำเป็น
-4. กลับไปหน้า Generate Token ใหม่ — `ads_management` จะโผล่มาให้เลือกแล้ว
+4. กลับไปหน้า Generate Token ใหม่ — permission นั้นจะโผล่มาให้เลือกแล้ว
 
 **Token โชว์ให้เห็นแค่ครั้งเดียว** copy ไปวางที่ `secrets/meta-access-token.txt`
 ทันที (ในไฟล์มีแค่ token อย่างเดียว ไม่ใส่อะไรอื่น) — ปิดหน้าไปแล้วดูซ้ำ
 ไม่ได้ ต้อง revoke แล้วสร้างใหม่เท่านั้น
 
-## ขั้นที่ 4 — Assign Business Portfolio และ Ad Account
+## ขั้นที่ 4 — Assign Ad Account
 
-ยังอยู่ที่หน้า System User ตัวเดิม → แท็บ **Assigned assets** → ต้อง assign
-**2 อย่างแยกกัน** เพราะ "สร้าง pixel" กับ "ใช้งาน pixel" เป็นคนละ asset:
+ยังอยู่ที่หน้า System User ตัวเดิม → แท็บ **Assigned assets** → search เลข
+ad account (ตัวเดียวกับที่จะใส่ใน `meta.ad_account_id` โดยไม่ต้องมี `act_`
+นำหน้า) → เพิ่มด้วยสิทธิ์ **Full access** — pixel ที่สร้างเสร็จแต่ละตัวที่
+Business จะถูก share เข้า ad account นี้ทันที
+(`POST /<pixel_id>/shared_accounts`) เพื่อให้แคมเปญบน ad account นี้ใช้งาน
+ได้ ถ้าข้าม assignment นี้ไป การ share จะได้ HTTP 403 กลับมา ต่อให้ token
+เป็นของ Admin และมี permission ถูกต้องแล้วก็ตาม — permission ของ token กับ
+สิทธิ์เข้าถึง asset ตัวนี้เป็นคนละเรื่องที่ต้องผ่านทั้งคู่
 
-- search เลข Business Portfolio (ตัวเดียวกับที่จะใส่ใน `meta.business_id`
-  ของ `config.yaml`) → เพิ่มด้วยสิทธิ์สร้าง pixel ได้ — ตรงนี้คือที่ที่
-  `POST /<business_id>/adspixels` จะสร้าง pixel จริงๆ
-- search เลข ad account (ตัวเดียวกับที่จะใส่ใน `meta.ad_account_id` โดย
-  ไม่ต้องมี `act_` นำหน้า) → เพิ่มด้วยสิทธิ์ **Full access** — pixel ที่
-  สร้างเสร็จแต่ละตัวจะถูก share เข้า ad account นี้ทันที
-  (`POST /<pixel_id>/shared_accounts`) เพื่อให้แคมเปญบน ad account นี้
-  ใช้งานได้
+พารามิเตอร์ `account_id` ของการเรียก share ต้องเป็น **เลข ID เปล่าๆ ของ ad
+account ไม่มี `act_` นำหน้า** — จุดเดียวในเอกสารนี้ที่ต่างจากที่อื่นที่ใช้
+`act_` นำหน้าเสมอ ถ้าใส่ `act_` นำหน้าไปจะได้ error
+`(#100) Param account_id must be a valid ID string`
 
-ถ้าข้าม assignment ไหนไป การเรียก API ส่วนนั้นจะได้ HTTP 403 กลับมา ต่อให้
-token มี permission ถูกต้องแล้วก็ตาม — permission ของ token กับสิทธิ์เข้าถึง
-asset เป็นคนละเรื่องที่ต้องผ่านทั้งคู่
-
-### ทำไมต้องแยกเป็น 2 asset
+### ทำไม pixel ต้องอยู่ที่ Business ไม่ใช่ ad account
 
 ad account หนึ่งตัวเป็น "เจ้าของ" pixel ได้แค่ตัวเดียวเท่านั้น ถ้าเรียก
 `POST /act_<ad_account_id>/adspixels` เพื่อสร้าง pixel ให้ร้านที่สองด้วย
 ad account เดิม จะเจอ error `(#6200) A pixel already exists for this
 account` ทันที (เจอเองจริงตอนสร้างร้านที่สอง) แต่ **Business Portfolio
 เป็นเจ้าของ pixel ได้สูงสุด 100 ตัว** สคริปต์เลยสร้าง pixel ที่ Business
-ก่อนแล้วค่อย share ออกไป ตรงกับรูปแบบของ pixel ที่สร้างด้วยมือทุกตัวใน
-Business Manager อยู่แล้ว: **Owner** คือ Business ส่วน ad account จะไป
-โผล่แค่ในช่อง **Settings → Sharing → Ad accounts** ของ pixel นั้นเท่านั้น
+ก่อน (`POST /<business_id>/adspixels`) แล้วค่อย share ออกไป ตรงกับรูปแบบ
+ของ pixel ที่สร้างด้วยมือทุกตัวใน Business Manager อยู่แล้ว: **Owner** คือ
+Business ส่วน ad account จะไปโผล่แค่ในช่อง **Settings → Sharing → Ad
+accounts** ของ pixel นั้นเท่านั้น
 
 ---
 

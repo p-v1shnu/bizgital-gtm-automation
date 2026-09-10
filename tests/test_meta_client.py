@@ -60,7 +60,7 @@ def test_creates_under_the_business_then_shares_with_the_ad_account(monkeypatch,
     assert calls[0]["data"]["name"] == "ShopShop Pigeon - Dataset"
     assert calls[0]["data"]["access_token"] == "fake-system-user-token"
     assert calls[1]["url"] == f"{GRAPH_API_BASE}/123456789012345/shared_accounts"
-    assert calls[1]["data"]["account_id"] == "act_1451413912465476"
+    assert calls[1]["data"]["account_id"] == "1451413912465476"
     assert calls[1]["data"]["access_token"] == "fake-system-user-token"
 
 
@@ -91,7 +91,33 @@ def test_a_403_names_the_permission_and_asset_hint(monkeypatch, client):
             403, {"error": {"message": "Permissions error", "code": 200}}
         ),
     )
-    with pytest.raises(ProvisioningError, match="ads_management permission"):
+    with pytest.raises(ProvisioningError, match="business_management permissions"):
+        client.create_pixel("ShopShop Pigeon - Dataset")
+
+
+def test_a_manage_pixels_audit_error_names_the_admin_requirement(monkeypatch, client):
+    """Confirmed live: an Employee System User with both ads_management and
+    business_management on its token still can't create a pixel under a
+    Business - only an Admin System User can. No permission scope fixes
+    this, so the hint must say so plainly instead of pointing back at
+    permissions."""
+    monkeypatch.setattr(
+        "gtm_provisioner.meta_client.requests.post",
+        lambda *a, **k: FakeResponse(
+            400,
+            {
+                "error": {
+                    "message": (
+                        "You do not have permission to perform this action. "
+                        "This action requires that you can "
+                        "MANAGE_PIXELS_AUDIT_NEEDED for this business account."
+                    ),
+                    "code": 10,
+                }
+            },
+        ),
+    )
+    with pytest.raises(ProvisioningError, match="Admin System User"):
         client.create_pixel("ShopShop Pigeon - Dataset")
 
 
