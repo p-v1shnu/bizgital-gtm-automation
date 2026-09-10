@@ -186,7 +186,11 @@ an ad account can only ever own one pixel of its own, discovered by hitting
 `(#6200) A pixel already exists for this account` on the second store
 provisioned during testing. Each pixel is created under the Business, then
 shared to the ad account (see `meta_client.py`'s `create_pixel` docstring
-and `docs/meta-marketing-api-setup.md`). Both IDs are currently global config
+and `docs/meta-marketing-api-setup.md`). See
+**`HANDOFF-META-PIXEL-FIX.md`** for the full account of this and two more
+issues found the same way (an Admin System User is required, not Employee;
+the sharing call's exact required parameters) — required reading before
+touching this part of the integration. Both IDs are currently global config
 values in this CLI, shared by every store; that may need to become per-brand
 later if a client brand gets its own ad account, but is not yet needed.
 
