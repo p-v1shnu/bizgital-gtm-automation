@@ -107,6 +107,20 @@ class MetaClient:
             ) from exc
         return validated_id
 
+    def delete_pixel(self, pixel_id):
+        """Delete a pixel outright, if Meta allows it for this one.
+
+        There is no delete button for a pixel anywhere in Business Manager's
+        UI - this is the only way to actually remove one, and Meta only
+        allows it for a pixel with no event history. A rejection here is
+        not a bug to chase; rename it (e.g. "UNUSED - ...") and remove it
+        from the ad account's Sharing list by hand instead - see
+        docs/meta-marketing-api-setup.md.
+        """
+        return self._delete(
+            f"{GRAPH_API_BASE}/{pixel_id}", f"deleting Meta pixel {pixel_id}"
+        )
+
     # -- request plumbing -------------------------------------------------
 
     def _throttle(self):
@@ -118,15 +132,26 @@ class MetaClient:
             time.sleep(interval - elapsed)
 
     def _post(self, url, data, description):
-        """POST once, retrying a 429/5xx or a network error with backoff."""
+        payload = dict(data, access_token=self._access_token)
+        return self._send_with_retry(
+            lambda: requests.post(url, data=payload, timeout=30), description
+        )
+
+    def _delete(self, url, description):
+        payload = {"access_token": self._access_token}
+        return self._send_with_retry(
+            lambda: requests.delete(url, data=payload, timeout=30), description
+        )
+
+    def _send_with_retry(self, send, description):
+        """Call `send()` once, retrying a 429/5xx or a network error with backoff."""
         delay = self._config.initial_backoff_seconds
         attempts = self._config.max_retries + 1
-        payload = dict(data, access_token=self._access_token)
 
         for attempt in range(1, attempts + 1):
             self._throttle()
             try:
-                response = requests.post(url, data=payload, timeout=30)
+                response = send()
             except RETRYABLE_REQUEST_ERRORS as exc:
                 self._last_request_at = time.monotonic()
                 if attempt == attempts:

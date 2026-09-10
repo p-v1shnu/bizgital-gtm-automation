@@ -168,3 +168,32 @@ def test_a_network_error_retries_then_gives_up(monkeypatch, client):
 
     with pytest.raises(ProvisioningError, match="network error"):
         client.create_pixel("ShopShop Pigeon - Dataset")
+
+
+def test_delete_pixel_sends_a_delete_request_with_the_token(monkeypatch, client):
+    calls = []
+
+    def fake_delete(url, data, timeout):
+        calls.append({"url": url, "data": data, "timeout": timeout})
+        return FakeResponse(200, True)
+
+    monkeypatch.setattr("gtm_provisioner.meta_client.requests.delete", fake_delete)
+
+    result = client.delete_pixel("123456789012345")
+
+    assert result is True
+    assert calls[0]["url"] == f"{GRAPH_API_BASE}/123456789012345"
+    assert calls[0]["data"]["access_token"] == "fake-system-user-token"
+
+
+def test_delete_pixel_raises_when_meta_refuses(monkeypatch, client):
+    """Meta only allows deleting a pixel with no event history - a rejection
+    here is expected for anything that already has activity, not a bug."""
+    monkeypatch.setattr(
+        "gtm_provisioner.meta_client.requests.delete",
+        lambda *a, **k: FakeResponse(
+            400, {"error": {"message": "Cannot delete pixel with activity"}}
+        ),
+    )
+    with pytest.raises(ProvisioningError, match="Cannot delete pixel with activity"):
+        client.delete_pixel("123456789012345")

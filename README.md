@@ -271,6 +271,13 @@ step, the entity it was processing, and:
   failed, the pixel's ID, so sharing can be fixed by hand in Business
   Manager or the pixel deleted
 
+Business Manager's UI has no delete button for a pixel at all. Deleting one
+is only possible through the API, and only while it has no event history -
+`scripts/delete_meta_pixel.py <pixel_id>` does this with the same config and
+token as a normal run. If Meta refuses, rename the pixel (e.g.
+"UNUSED - ...") and unshare it from the ad account by hand instead; a
+leftover, unshared pixel with no activity does not affect anything.
+
 GA4 property creation runs first, then the Meta pixel, then the GTM
 container — each stage happens before the next resource is created, so a
 failure at any stage only ever leaves the resources from earlier stages
@@ -295,6 +302,7 @@ malformed-ID and (for GA4) orphaned-property failure modes explicitly.
 | Path | Purpose | In git |
 |---|---|---|
 | `provision_gtm.py` | CLI entry point | yes |
+| `scripts/delete_meta_pixel.py` | delete a leftover test/orphaned Meta pixel | yes |
 | `gtm_provisioner/store_inputs.py` | where the store IDs come from | yes |
 | `gtm_provisioner/ga4_client.py` | GA4 property/stream creation | yes |
 | `gtm_provisioner/meta_client.py` | Meta pixel creation | yes |
