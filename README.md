@@ -120,10 +120,13 @@ A Business Portfolio can own up to 100 pixels, so `meta_client.py` creates
 each pixel there and then shares it to the ad account, mirroring exactly how
 every pixel already made by hand in Business Manager is set up: **Owner** is
 the Business, and the ad account only appears under that pixel's own
-**Sharing → Ad accounts** list. The sharing call takes the ad account's
-plain numeric ID with no `act_` prefix — unlike every other ad-account
-reference in this project, confirmed by Meta rejecting the prefixed form
-with `(#100) Param account_id must be a valid ID string`.
+**Sharing → Ad accounts** list. The sharing call needs both `business`
+(`meta.business_id`) and `account_id` in its body - Meta rejects the request
+with `(#100) The parameter business is required` if `business` is missing -
+and `account_id` is the ad account's plain numeric ID with no `act_` prefix,
+unlike every other ad-account reference in this project, confirmed by Meta
+rejecting the prefixed form with
+`(#100) Param account_id must be a valid ID string`.
 
 `ads_management` may not appear when generating the token until the app's use
 case has actually requested it — if it's missing, go to the app's dashboard →

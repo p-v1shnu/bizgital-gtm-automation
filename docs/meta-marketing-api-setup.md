@@ -78,10 +78,16 @@ can use it. Without this assignment, sharing returns an HTTP 403 even with a
 correctly-scoped, Admin-owned token — the token's permission and the System
 User's access to this specific asset are two separate checks.
 
-The sharing call's `account_id` parameter is the ad account's **plain
-numeric ID, with no `act_` prefix** — the one place in this whole setup that
-differs from every other ad-account reference. Sending it with `act_`
-prefixed returns `(#100) Param account_id must be a valid ID string`.
+The sharing call (`POST /<pixel_id>/shared_accounts`) needs two body
+parameters, both confirmed by hitting their missing/malformed-value errors
+live:
+
+- `business` — `meta.business_id`. Omitting it returns
+  `(#100) The parameter business is required`.
+- `account_id` — the ad account's **plain numeric ID, with no `act_`
+  prefix**, the one place in this whole setup that differs from every other
+  ad-account reference. Sending it `act_`-prefixed returns
+  `(#100) Param account_id must be a valid ID string`.
 
 ### Why the pixel lives on the Business, not the ad account
 

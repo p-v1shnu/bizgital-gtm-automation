@@ -91,7 +91,10 @@ class MetaClient:
         try:
             self._post(
                 f"{GRAPH_API_BASE}/{validated_id}/shared_accounts",
-                {"account_id": self._config.meta_ad_account_id},
+                {
+                    "business": self._config.meta_business_id,
+                    "account_id": self._config.meta_ad_account_id,
+                },
                 f"sharing Meta pixel {validated_id} with the configured ad account",
             )
         except ProvisioningError as exc:

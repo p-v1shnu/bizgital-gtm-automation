@@ -60,6 +60,7 @@ def test_creates_under_the_business_then_shares_with_the_ad_account(monkeypatch,
     assert calls[0]["data"]["name"] == "ShopShop Pigeon - Dataset"
     assert calls[0]["data"]["access_token"] == "fake-system-user-token"
     assert calls[1]["url"] == f"{GRAPH_API_BASE}/123456789012345/shared_accounts"
+    assert calls[1]["data"]["business"] == "495054980697867"
     assert calls[1]["data"]["account_id"] == "1451413912465476"
     assert calls[1]["data"]["access_token"] == "fake-system-user-token"
 

@@ -77,10 +77,15 @@ Business จะถูก share เข้า ad account นี้ทันที
 เป็นของ Admin และมี permission ถูกต้องแล้วก็ตาม — permission ของ token กับ
 สิทธิ์เข้าถึง asset ตัวนี้เป็นคนละเรื่องที่ต้องผ่านทั้งคู่
 
-พารามิเตอร์ `account_id` ของการเรียก share ต้องเป็น **เลข ID เปล่าๆ ของ ad
-account ไม่มี `act_` นำหน้า** — จุดเดียวในเอกสารนี้ที่ต่างจากที่อื่นที่ใช้
-`act_` นำหน้าเสมอ ถ้าใส่ `act_` นำหน้าไปจะได้ error
-`(#100) Param account_id must be a valid ID string`
+การเรียก share (`POST /<pixel_id>/shared_accounts`) ต้องมี 2 พารามิเตอร์ใน
+body ทั้งคู่ ยืนยันจากการเจอ error จริงตอนขาดหรือใส่ผิดรูปแบบ:
+
+- `business` — ใส่ `meta.business_id` ถ้าไม่ใส่จะได้ error
+  `(#100) The parameter business is required`
+- `account_id` — ต้องเป็น **เลข ID เปล่าๆ ของ ad account ไม่มี `act_`
+  นำหน้า** จุดเดียวในเอกสารนี้ที่ต่างจากที่อื่นที่ใช้ `act_` นำหน้าเสมอ
+  ถ้าใส่ `act_` นำหน้าไปจะได้ error
+  `(#100) Param account_id must be a valid ID string`
 
 ### ทำไม pixel ต้องอยู่ที่ Business ไม่ใช่ ad account
 
