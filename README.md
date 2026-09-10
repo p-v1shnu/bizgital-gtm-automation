@@ -51,11 +51,31 @@ deliberately.
 
 ## Setup
 
+macOS/Linux:
+
 ```bash
 python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
 cp config.example.yaml config.yaml
 ```
+
+Windows (PowerShell):
+
+```powershell
+python -m venv .venv
+.venv\Scripts\activate
+pip install -r requirements.txt
+copy config.example.yaml config.yaml
+```
+
+`.venv\Scripts\activate` puts `(.venv)` in the prompt and must be run again
+in every new PowerShell window — it does not persist across windows or
+reboots. Once activated, every command below can drop the `.venv/bin/` (or
+`.venv\Scripts\`) prefix and just say `python ...` / `pip ...`; without
+activating, use the full path every time (`.venv\Scripts\python.exe
+provision_gtm.py ...`). Either way, `provision_gtm.py` needs the `python`
+(or `python3`) interpreter in front of it — PowerShell does not run a `.py`
+file directly even from its own folder.
 
 Then, all of which stay out of git:
 
@@ -195,6 +215,8 @@ Pixel ID it gets back the same way, for the same reason.
 
 ## Running
 
+macOS/Linux:
+
 ```bash
 # interactive
 .venv/bin/python provision_gtm.py
@@ -204,6 +226,13 @@ Pixel ID it gets back the same way, for the same reason.
 
 # validate config, input and template without touching the GTM, GA4 or Meta API
 .venv/bin/python provision_gtm.py --dry-run
+```
+
+Windows (PowerShell), with the venv activated (see Setup above):
+
+```powershell
+python provision_gtm.py --store-name "ShopShop Pigeon" --domain store.shopshop.la
+python provision_gtm.py --dry-run
 ```
 
 `--dry-run` needs no credentials. It runs every consistency check the live run
