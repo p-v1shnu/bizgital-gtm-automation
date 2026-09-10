@@ -186,14 +186,28 @@ def test_delete_pixel_sends_a_delete_request_with_the_token(monkeypatch, client)
     assert calls[0]["data"]["access_token"] == "fake-system-user-token"
 
 
-def test_delete_pixel_raises_when_meta_refuses(monkeypatch, client):
-    """Meta only allows deleting a pixel with no event history - a rejection
-    here is expected for anything that already has activity, not a bug."""
+def test_delete_pixel_names_the_unsupported_operation_hint(monkeypatch, client):
+    """Confirmed live, even against a pixel with zero event history: Meta's
+    Graph API rejects deleting a pixel outright with "Unsupported delete
+    request ... does not support this operation" - not a permission error,
+    the operation itself isn't supported. The hint must say so plainly
+    rather than pointing at Admin/permission setup, which fixes nothing
+    here."""
     monkeypatch.setattr(
         "gtm_provisioner.meta_client.requests.delete",
         lambda *a, **k: FakeResponse(
-            400, {"error": {"message": "Cannot delete pixel with activity"}}
+            400,
+            {
+                "error": {
+                    "message": (
+                        "Unsupported delete request. Object with ID "
+                        "'123456789012345' does not exist, cannot be loaded "
+                        "due to missing permissions, or does not support "
+                        "this operation."
+                    )
+                }
+            },
         ),
     )
-    with pytest.raises(ProvisioningError, match="Cannot delete pixel with activity"):
+    with pytest.raises(ProvisioningError, match="does not support deleting a pixel"):
         client.delete_pixel("123456789012345")

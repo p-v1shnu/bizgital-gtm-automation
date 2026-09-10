@@ -269,14 +269,16 @@ step, the entity it was processing, and:
   Google Analytics
 - if the Meta pixel was created but sharing it to the ad account then
   failed, the pixel's ID, so sharing can be fixed by hand in Business
-  Manager or the pixel deleted
+  Manager, or unshared and left as-is
 
-Business Manager's UI has no delete button for a pixel at all. Deleting one
-is only possible through the API, and only while it has no event history -
-`scripts/delete_meta_pixel.py <pixel_id>` does this with the same config and
-token as a normal run. If Meta refuses, rename the pixel (e.g.
-"UNUSED - ...") and unshare it from the ad account by hand instead; a
-leftover, unshared pixel with no activity does not affect anything.
+A leftover Meta pixel cannot actually be deleted, confirmed live: Business
+Manager's UI has no delete button for one, and `scripts/delete_meta_pixel.py
+<pixel_id>` (same config and token as a normal run) fails even against a
+pixel with zero event history with "Unsupported delete request ... does not
+support this operation" - Meta's API does not support deleting a pixel at
+all. Rename it (e.g. "UNUSED - ...") and remove it from the ad account's
+Sharing list by hand instead; a leftover, unshared pixel with no activity
+does not affect anything.
 
 GA4 property creation runs first, then the Meta pixel, then the GTM
 container — each stage happens before the next resource is created, so a

@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
-"""One-off utility: delete one or more Meta pixels via the Graph API.
+"""One-off utility: try to delete one or more Meta pixels via the Graph API.
 
-Business Manager's UI has no delete button for pixels at all - deleting via
-the API is the only way to actually remove one, and Meta only allows it for
-a pixel with no event history. A rejection here usually means the pixel
-already has activity and can't be deleted that way; rename it (e.g.
-"UNUSED - ...") and remove it from the ad account's Sharing list by hand
-instead - see docs/meta-marketing-api-setup.md.
+Confirmed live: this does not actually work. Meta's Graph API rejects
+DELETE on a pixel with "Unsupported delete request ... does not support
+this operation" even for a pixel with zero event history - it is simply
+not a supported operation, not a permission problem. Business Manager's UI
+has no delete button for pixels either. Kept as the documented answer to
+"can the API delete it instead" rather than leaving that unanswered, and in
+case Meta adds real support later. Rename the pixel (e.g. "UNUSED - ...")
+and remove it from the ad account's Sharing list by hand instead - see
+docs/meta-marketing-api-setup.md.
 
 Uses the same config.yaml and Meta access token as provision_gtm.py - no
 separate credential needed.
