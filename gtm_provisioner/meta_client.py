@@ -107,24 +107,6 @@ class MetaClient:
             ) from exc
         return validated_id
 
-    def delete_pixel(self, pixel_id):
-        """Try to delete a pixel outright - confirmed live not to work.
-
-        There is no delete button for a pixel anywhere in Business Manager's
-        UI either. Calling this on a pixel with zero event history still
-        fails with "Unsupported delete request ... does not support this
-        operation" - Meta's Graph API does not support deleting a pixel at
-        all, not even an empty one just created by mistake; this is not a
-        permission problem to chase. Kept here as the documented answer to
-        "can we delete it via the API instead" rather than leaving that
-        question open, and in case Meta ever adds real support. Rename the
-        pixel (e.g. "UNUSED - ...") and remove it from the ad account's
-        Sharing list by hand instead - see docs/meta-marketing-api-setup.md.
-        """
-        return self._delete(
-            f"{GRAPH_API_BASE}/{pixel_id}", f"deleting Meta pixel {pixel_id}"
-        )
-
     # -- request plumbing -------------------------------------------------
 
     def _throttle(self):
@@ -136,26 +118,15 @@ class MetaClient:
             time.sleep(interval - elapsed)
 
     def _post(self, url, data, description):
-        payload = dict(data, access_token=self._access_token)
-        return self._send_with_retry(
-            lambda: requests.post(url, data=payload, timeout=30), description
-        )
-
-    def _delete(self, url, description):
-        payload = {"access_token": self._access_token}
-        return self._send_with_retry(
-            lambda: requests.delete(url, data=payload, timeout=30), description
-        )
-
-    def _send_with_retry(self, send, description):
-        """Call `send()` once, retrying a 429/5xx or a network error with backoff."""
+        """POST once, retrying a 429/5xx or a network error with backoff."""
         delay = self._config.initial_backoff_seconds
         attempts = self._config.max_retries + 1
+        payload = dict(data, access_token=self._access_token)
 
         for attempt in range(1, attempts + 1):
             self._throttle()
             try:
-                response = send()
+                response = requests.post(url, data=payload, timeout=30)
             except RETRYABLE_REQUEST_ERRORS as exc:
                 self._last_request_at = time.monotonic()
                 if attempt == attempts:
@@ -205,15 +176,6 @@ class MetaClient:
                 "alone (even with business_management) does not unlock it for "
                 "an Employee System User. See README.md's 'Meta System User "
                 "token and app' section."
-            )
-        elif "Unsupported delete request" in detail:
-            message += (
-                "\n    Hint: confirmed live - Meta's Graph API does not support "
-                "deleting a pixel at all (this is not a permission problem; "
-                "the pixel exists and the token can see it). Business "
-                "Manager's UI has no delete button for pixels either. Rename "
-                "the pixel (e.g. 'UNUSED - ...') and remove it from the ad "
-                "account's Sharing list by hand instead."
             )
         elif status in (400, 403):
             message += (
