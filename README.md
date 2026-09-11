@@ -8,14 +8,17 @@ store's website.
 v1 scope is `docs/PRD-gtm-provisioning-en.md`; automatically creating the GA4
 property and the Meta Pixel are pieces of the PRD's v2 roadmap, brought
 forward early. The operator supplies just a store name and website domain —
-neither ID is typed in by hand.
+neither ID is typed in by hand by default. The one deliberate exception is
+`--meta-pixel-id`, an escape hatch to reuse an existing pixel instead of
+creating a new one (see "Reusing an existing Meta pixel" below).
 
 ## What it does
 
 1. Creates a GA4 property and web data stream for the store's website domain,
    and reads back the Measurement ID
 2. Creates a Meta pixel named `<store name> - Dataset` under the configured
-   ad account, and reads back its Pixel ID
+   Business (or, if `--meta-pixel-id` was given, renames that existing pixel
+   instead), and reads back its Pixel ID
 3. Creates the container under the configured GTM account
 4. Enables the built-in variables listed in the template
 5. Creates folders and custom templates, if the template has any
@@ -224,6 +227,9 @@ macOS/Linux:
 # unattended
 .venv/bin/python provision_gtm.py --store-name "ShopShop Pigeon" --domain store.shopshop.la
 
+# reuse an existing, unused Meta pixel instead of creating a new one
+.venv/bin/python provision_gtm.py --store-name "ShopShop Pigeon" --domain store.shopshop.la --meta-pixel-id 123456789012345
+
 # validate config, input and template without touching the GTM, GA4 or Meta API
 .venv/bin/python provision_gtm.py --dry-run
 ```
@@ -239,6 +245,22 @@ python provision_gtm.py --dry-run
 would hit mid-flight, so a freshly exported template can be validated before
 any container, GA4 property or Meta pixel exists. Nothing is created in a dry
 run; placeholder IDs stand in for the real ones.
+
+### Reusing an existing Meta pixel
+
+Meta pixels cannot be deleted (confirmed live - see
+`HANDOFF-META-PIXEL-FIX.md`), so a pixel created by mistake, or left over
+from testing, is otherwise permanent dead weight sitting in Business
+Manager. `--meta-pixel-id <id>` puts one to use instead of creating a new
+one: the ID is validated the same way a freshly-created one is, then
+renamed to `<store name> - Dataset` via `meta_client.py`'s `rename_pixel`,
+so it never keeps a stale name in Business Manager. Reuse only a pixel that
+never received real event traffic - reusing one that already has another
+store's history mixes that history into the new store's data.
+
+There is deliberately no interactive prompt for this: omitting the flag
+always means "create a new pixel," so an unattended run's behaviour never
+depends on whether a terminal happens to be attached.
 
 Exit codes: `0` success, `1` provisioning failed, `2` bad config, input or
 template.
@@ -311,4 +333,6 @@ malformed-ID and (for GA4) orphaned-property failure modes explicitly.
 `store_inputs.py` is the only module that knows how the GA4 Measurement ID
 and Meta Pixel ID are obtained: the website domain resolves to a Measurement
 ID via `ga4_client.py`, and the store name resolves to a Pixel ID via
-`meta_client.py`. Neither ID is operator-supplied any more.
+`meta_client.py` - normally by creating a new pixel, or by renaming a reused
+one if `--meta-pixel-id` was given. Neither ID is typed in by hand in the
+default path.

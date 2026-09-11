@@ -168,3 +168,30 @@ def test_a_network_error_retries_then_gives_up(monkeypatch, client):
 
     with pytest.raises(ProvisioningError, match="network error"):
         client.create_pixel("ShopShop Pigeon - Dataset")
+
+
+def test_rename_pixel_posts_the_new_name_to_the_pixel_itself(monkeypatch, client):
+    calls = []
+
+    def fake_post(url, data, timeout):
+        calls.append({"url": url, "data": data})
+        return FakeResponse(200, {"success": True})
+
+    monkeypatch.setattr("gtm_provisioner.meta_client.requests.post", fake_post)
+
+    client.rename_pixel("123456789012345", "ShopShop Pigeon - Dataset")
+
+    assert calls[0]["url"] == f"{GRAPH_API_BASE}/123456789012345"
+    assert calls[0]["data"]["name"] == "ShopShop Pigeon - Dataset"
+    assert calls[0]["data"]["access_token"] == "fake-system-user-token"
+
+
+def test_rename_pixel_raises_on_failure(monkeypatch, client):
+    monkeypatch.setattr(
+        "gtm_provisioner.meta_client.requests.post",
+        lambda *a, **k: FakeResponse(
+            400, {"error": {"message": "No such pixel"}}
+        ),
+    )
+    with pytest.raises(ProvisioningError, match="No such pixel"):
+        client.rename_pixel("999999999999999", "ShopShop Pigeon - Dataset")

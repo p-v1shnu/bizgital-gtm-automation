@@ -101,11 +101,23 @@ class MetaClient:
             raise ProvisioningError(
                 f"{exc}\n    Pixel {validated_id} ({name!r}) was created under "
                 f"the Business but is not shared with any ad account yet: fix "
-                "sharing by hand in Business Manager, or delete the pixel and "
-                "retry.",
+                "sharing by hand in Business Manager (it cannot be deleted - "
+                "see HANDOFF-META-PIXEL-FIX.md), or reuse it for a later "
+                "store via --meta-pixel-id.",
                 entity=name,
             ) from exc
         return validated_id
+
+    def rename_pixel(self, pixel_id, name):
+        """Rename an existing pixel - used when an operator reuses one via
+        --meta-pixel-id instead of creating a new one, so it doesn't keep a
+        stale name (e.g. from an earlier test store) in Business Manager.
+        """
+        self._post(
+            f"{GRAPH_API_BASE}/{pixel_id}",
+            {"name": name},
+            f"renaming Meta pixel {pixel_id} to {name!r}",
+        )
 
     # -- request plumbing -------------------------------------------------
 

@@ -10,13 +10,19 @@ website domain; both IDs are obtained automatically:
 - the store name becomes the Meta Pixel's name, as "<store name> - Dataset"
   (via `meta_client`), matching the naming convention already in use there
 
-Neither ID is typed in by hand any more.
+Neither ID is typed in by hand by default. The one deliberate exception is
+`meta_pixel_id`: an operator may pass an *existing* Pixel ID to reuse instead
+of creating a new one - useful because Meta pixels cannot be deleted (API
+and UI both refuse it - see HANDOFF-META-PIXEL-FIX.md), so a pixel created
+by mistake or during testing, that never received any real event traffic,
+is otherwise permanent dead weight. A reused pixel is renamed to match the
+new store, so it never keeps a stale name in Business Manager.
 """
 
 from dataclasses import dataclass
 
 from .errors import ValidationError
-from .validators import validate_store_name, validate_website_domain
+from .validators import validate_meta_pixel_id, validate_store_name, validate_website_domain
 
 # Used only when the matching client is None (a dry run): well-formed
 # placeholders so the rest of the pipeline can be exercised without ever
@@ -47,6 +53,7 @@ def collect_store_inputs(
     meta_client,
     store_name=None,
     website_domain=None,
+    meta_pixel_id=None,
     prompt=input,
 ):
     """Return validated StoreInputs.
@@ -58,6 +65,13 @@ def collect_store_inputs(
     `ga4_client` and `meta_client` are None during a dry run: no GA4 property
     or Meta pixel is created, and the DRY_RUN_* constants stand in for the
     real IDs.
+
+    `meta_pixel_id`, if given, is an existing Pixel ID to reuse: it is
+    validated and renamed to this store's name instead of creating a new
+    pixel. Unlike `store_name`/`website_domain` there is no interactive
+    prompt for it - omitting it always means "create a new pixel", so an
+    unattended run's behaviour never depends on whether a terminal is
+    attached.
     """
     supplied = {"store_name": store_name, "website_domain": website_domain}
     collected = {}
@@ -82,13 +96,18 @@ def collect_store_inputs(
     else:
         ga4_measurement_id = ga4_client.create_property_and_stream(domain)
 
-    if meta_client is None:
-        meta_pixel_id = DRY_RUN_META_PIXEL_ID
+    pixel_name = f"{name}{PIXEL_NAME_SUFFIX}"
+    if meta_pixel_id is not None:
+        pixel_id = validate_meta_pixel_id(meta_pixel_id)
+        if meta_client is not None:
+            meta_client.rename_pixel(pixel_id, pixel_name)
+    elif meta_client is None:
+        pixel_id = DRY_RUN_META_PIXEL_ID
     else:
-        meta_pixel_id = meta_client.create_pixel(f"{name}{PIXEL_NAME_SUFFIX}")
+        pixel_id = meta_client.create_pixel(pixel_name)
 
     return StoreInputs(
         container_name=domain,
         ga4_measurement_id=ga4_measurement_id,
-        meta_pixel_id=meta_pixel_id,
+        meta_pixel_id=pixel_id,
     )

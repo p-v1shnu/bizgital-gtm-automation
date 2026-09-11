@@ -82,9 +82,10 @@ def validate_ga4_measurement_id(value):
 def validate_meta_pixel_id(value):
     """Return the normalised Meta Pixel ID, or raise ValidationError.
 
-    Used to sanity-check the ID meta_client.py gets back from creating a
-    pixel, the same way validate_ga4_measurement_id checks GA4's response,
-    rather than to validate operator input directly.
+    Used both to sanity-check the ID meta_client.py gets back from creating
+    a pixel (the same way validate_ga4_measurement_id checks GA4's
+    response) and to validate an operator-supplied --meta-pixel-id when
+    reusing an existing pixel instead of creating one.
     """
     pixel_id = (value or "").strip()
     if not pixel_id:

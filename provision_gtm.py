@@ -8,6 +8,7 @@ supplies the store's name and website domain.
 Usage:
     python provision_gtm.py
     python provision_gtm.py --store-name "ShopShop Pigeon" --domain store.shopshop.la
+    python provision_gtm.py --store-name "ShopShop Pigeon" --domain store.shopshop.la --meta-pixel-id 123456789012345
     python provision_gtm.py --dry-run
 """
 
@@ -46,6 +47,16 @@ def parse_args(argv=None):
             "store website domain, e.g. store.shopshop.la; prompted for if "
             "omitted. Used as both the GTM container name and the GA4 "
             "property name"
+        ),
+    )
+    parser.add_argument(
+        "--meta-pixel-id",
+        help=(
+            "reuse an existing Meta Pixel ID instead of creating a new one "
+            "(renamed to '<store name> - Dataset'); omit to create a new "
+            "pixel as usual. Meta pixels cannot be deleted, so this is how "
+            "a leftover test/unused pixel gets put to use instead of staying "
+            "permanent dead weight in Business Manager"
         ),
     )
     parser.add_argument(
@@ -93,17 +104,23 @@ def run(argv=None):
 
     ga4_client = None if args.dry_run else Ga4Client.from_config(config)
     meta_client = None if args.dry_run else MetaClient.from_config(config)
-    store = collect_store_inputs(ga4_client, meta_client, args.store_name, args.domain)
+    store = collect_store_inputs(
+        ga4_client, meta_client, args.store_name, args.domain, args.meta_pixel_id
+    )
 
+    pixel_note = "reused, would be renamed" if args.meta_pixel_id else "placeholder"
     if args.dry_run:
         print("\nDry run - nothing was sent to the GTM, GA4 or Meta API.")
         print(f"  website domain      {store.container_name}")
         print(f"  GA4 Measurement ID  {store.ga4_measurement_id} (placeholder)")
-        print(f"  Meta Pixel ID       {store.meta_pixel_id} (placeholder)")
+        print(f"  Meta Pixel ID       {store.meta_pixel_id} ({pixel_note})")
         return EXIT_OK
 
     print(f"\nGA4 property created, Measurement ID: {store.ga4_measurement_id}")
-    print(f"Meta pixel created, ID: {store.meta_pixel_id}\n")
+    if args.meta_pixel_id:
+        print(f"Meta pixel reused and renamed, ID: {store.meta_pixel_id}\n")
+    else:
+        print(f"Meta pixel created, ID: {store.meta_pixel_id}\n")
 
     client = GtmClient.from_config(config)
     provisioner = Provisioner(

@@ -22,15 +22,19 @@ class FakeGa4Client:
 
 
 class FakeMetaClient:
-    """Stands in for MetaClient, recording the pixel name it was asked to create."""
+    """Stands in for MetaClient, recording what it was asked to create/rename."""
 
     def __init__(self, pixel_id="123456789012345"):
         self.requested_names = []
+        self.renamed = []
         self._pixel_id = pixel_id
 
     def create_pixel(self, name):
         self.requested_names.append(name)
         return self._pixel_id
+
+    def rename_pixel(self, pixel_id, name):
+        self.renamed.append((pixel_id, name))
 
 
 def test_supplied_values_are_validated_and_used_as_is():
@@ -104,3 +108,46 @@ def test_a_bad_supplied_domain_raises_immediately_without_prompting():
             website_domain="not a domain",
             prompt=explode,
         )
+
+
+def test_reusing_a_pixel_renames_it_instead_of_creating_a_new_one():
+    meta_client = FakeMetaClient()
+    store = collect_store_inputs(
+        FakeGa4Client(),
+        meta_client,
+        store_name="ShopShop Pigeon",
+        website_domain="store.shopshop.la",
+        meta_pixel_id="123456789012345",
+    )
+    assert store.meta_pixel_id == "123456789012345"
+    assert meta_client.requested_names == []
+    assert meta_client.renamed == [("123456789012345", "ShopShop Pigeon - Dataset")]
+
+
+def test_a_malformed_reused_pixel_id_raises_immediately_without_renaming():
+    from gtm_provisioner.errors import ValidationError
+
+    meta_client = FakeMetaClient()
+    with pytest.raises(ValidationError):
+        collect_store_inputs(
+            FakeGa4Client(),
+            meta_client,
+            store_name="ShopShop Pigeon",
+            website_domain="store.shopshop.la",
+            meta_pixel_id="not-a-real-id",
+        )
+    assert meta_client.renamed == []
+
+
+def test_a_dry_run_with_a_reused_pixel_id_validates_but_never_calls_meta():
+    """meta_client is None during a dry run; if the code tried to call
+    rename_pixel on it anyway this would raise AttributeError instead of
+    returning cleanly."""
+    store = collect_store_inputs(
+        None,
+        None,
+        store_name="ShopShop Pigeon",
+        website_domain="store.shopshop.la",
+        meta_pixel_id="123456789012345",
+    )
+    assert store.meta_pixel_id == "123456789012345"
