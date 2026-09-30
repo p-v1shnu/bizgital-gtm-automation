@@ -237,7 +237,16 @@ macOS/Linux:
 Windows (PowerShell), with the venv activated (see Setup above):
 
 ```powershell
+# interactive
+python provision_gtm.py
+
+# unattended
 python provision_gtm.py --store-name "ShopShop Pigeon" --domain store.shopshop.la
+
+# reuse an existing, unused Meta pixel instead of creating a new one
+python provision_gtm.py --store-name "ShopShop Pigeon" --domain store.shopshop.la --meta-pixel-id 123456789012345
+
+# validate config, input and template without touching the GTM, GA4 or Meta API
 python provision_gtm.py --dry-run
 ```
 
@@ -291,7 +300,9 @@ step, the entity it was processing, and:
   Google Analytics
 - if the Meta pixel was created but sharing it to the ad account then
   failed, the pixel's ID, so sharing can be fixed by hand in Business
-  Manager or the pixel deleted
+  Manager, or the pixel reused for a later store via `--meta-pixel-id`
+  (Meta pixels cannot actually be deleted - see "Reusing an existing Meta
+  pixel" above)
 
 GA4 property creation runs first, then the Meta pixel, then the GTM
 container — each stage happens before the next resource is created, so a
@@ -300,9 +311,18 @@ behind, never anything created after it.
 
 ## Tests
 
+macOS/Linux:
+
 ```bash
 .venv/bin/pip install -r requirements-dev.txt
 .venv/bin/python -m pytest
+```
+
+Windows (PowerShell), with the venv activated (see Setup above):
+
+```powershell
+pip install -r requirements-dev.txt
+python -m pytest
 ```
 
 The suite runs entirely against fake GTM, GA4 and Meta APIs (the Meta one by
