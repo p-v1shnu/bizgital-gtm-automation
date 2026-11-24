@@ -139,6 +139,8 @@ class FakeGtmClient:
         self.created = {"folder": [], "customTemplate": [], "variable": [], "trigger": [], "tag": []}
         self.builtin_variable_types = []
         self.published_paths = []
+        self.auto_created_tags = []  # tags GTM adds on its own, set by a test
+        self.deleted_tag_paths = []
         self.container = None
 
     def _next_id(self):
@@ -185,6 +187,17 @@ class FakeGtmClient:
 
     def create_tag(self, workspace_path, body):
         return self._create("tag", body, "tagId")
+
+    def list_tags(self, workspace_path):
+        return [
+            {**tag, "path": f"{workspace_path}/tags/{tag['tagId']}"}
+            for tag in self.created["tag"] + self.auto_created_tags
+        ]
+
+    def delete_tag(self, tag_path):
+        self.deleted_tag_paths.append(tag_path)
+        tag_id = tag_path.rsplit("/", 1)[-1]
+        self.auto_created_tags = [t for t in self.auto_created_tags if t["tagId"] != tag_id]
 
     def list_variables(self, workspace_path):
         return self.created["variable"]

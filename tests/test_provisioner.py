@@ -136,3 +136,55 @@ def test_unsupported_entity_kinds_are_reported(config, fake_client, tmp_path):
     )
     provisioner.run(STORE)
     assert any("zone x1" in message for message in messages)
+
+
+# -- tags GTM adds on its own ------------------------------------------------
+
+
+def _run_with_auto_tags(config, fake_client, template_path, auto_tags):
+    fake_client.auto_created_tags = auto_tags
+    logs = []
+    provisioner = Provisioner(
+        config, fake_client, load_template(template_path), log=logs.append
+    )
+    return provisioner.run(STORE), logs
+
+
+def test_auto_created_ga4_destination_tag_is_deleted_before_versioning(
+    config, fake_client, template_path
+):
+    auto = {
+        "tagId": "9001",
+        "name": "Google Analytics G-NEWNEWNEW",
+        "type": "dest_ga",
+        "parameter": [{"key": "destinationId", "value": "G-NEWNEWNEW"}],
+    }
+    result, logs = _run_with_auto_tags(config, fake_client, template_path, [auto])
+
+    assert fake_client.deleted_tag_paths == ["accounts/111/containers/888/workspaces/1/tags/9001"]
+    assert result.counts_match
+    assert any("removed auto-created tag" in line for line in logs)
+
+
+def test_destination_for_another_id_and_unknown_tags_are_left_alone(
+    config, fake_client, template_path
+):
+    other_destination = {
+        "tagId": "9002",
+        "name": "Google Analytics G-OTHEROTHER",
+        "type": "dest_ga",
+        "parameter": [{"key": "destinationId", "value": "G-OTHEROTHER"}],
+    }
+    unknown = {"tagId": "9003", "name": "Mystery", "type": "html"}
+    _, logs = _run_with_auto_tags(
+        config, fake_client, template_path, [other_destination, unknown]
+    )
+
+    assert fake_client.deleted_tag_paths == []
+    assert sum("Unexpected tag" in line for line in logs) == 2
+
+
+def test_nothing_is_deleted_when_gtm_added_no_tags(config, fake_client, template_path):
+    _, logs = _run_with_auto_tags(config, fake_client, template_path, [])
+    assert fake_client.deleted_tag_paths == []
+    assert not any("Unexpected tag" in line for line in logs)

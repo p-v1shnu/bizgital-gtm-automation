@@ -55,6 +55,7 @@ class Provisioner:
         self._log = log
         self._confirm = confirm
         self._remapper = Remapper()
+        self._created_tag_ids = set()
         self._container = None
         self._workspace_path = None
         self._current_step = None
@@ -79,6 +80,7 @@ class Provisioner:
             created["variable"] = self._create_variables(store)
             created["trigger"] = self._create_triggers()
             created["tag"] = self._create_tags()
+            self._remove_auto_created_tags(store)
             self._verify_store_ids(store)
             version_id = self._create_version_and_publish(store)
         except ProvisioningError as exc:
@@ -193,16 +195,40 @@ class Provisioner:
         tags = self._template["tag"]
         self._mark(STEP_TAGS)
         self._log(f"[{STEP_TAGS}] {len(tags)} to create")
+        self._created_tag_ids = set()
         for tag in tags:
             self._mark(STEP_TAGS, tag.get("name"))
             body = self._remapper.prepare_tag(strip_entity(tag, "tag"))
-            self._client.create_tag(self._workspace_path, body)
+            created = self._client.create_tag(self._workspace_path, body)
+            self._created_tag_ids.add(created.get("tagId"))
         if self._remapper.reserved_trigger_ids_seen:
             self._log(
                 "    passed through GTM built-in trigger IDs: "
                 + ", ".join(sorted(self._remapper.reserved_trigger_ids_seen))
             )
         return len(tags)
+
+    def _remove_auto_created_tags(self, store):
+        """Delete the Google tag destination GTM adds on its own.
+
+        Once a Google tag with this store's GA4 Measurement ID exists, GTM
+        creates a second tag of type ``dest_ga`` for the same ID. It is not in
+        the template, and with both present GTM refuses to build the version
+        ("compiler error"), so it has to go before the version is created.
+        Any other tag we did not create is only reported, never deleted.
+        """
+        self._mark(STEP_TAGS, "checking for tags GTM added on its own")
+        for tag in self._client.list_tags(self._workspace_path):
+            if tag.get("tagId") in self._created_tag_ids:
+                continue
+            if tag.get("type") == "dest_ga" and _destination_id(tag) == store.ga4_measurement_id:
+                self._client.delete_tag(tag["path"])
+                self._log(f"    removed auto-created tag {tag.get('name')!r} (duplicate GA4 destination)")
+            else:
+                self._log(
+                    f"  ! Unexpected tag {tag.get('name')!r} (type {tag.get('type')!r}) "
+                    "is not in the template; left in place."
+                )
 
     def _verify_store_ids(self, store):
         """Read the two constants back and confirm they hold this store's IDs."""
@@ -311,6 +337,14 @@ class Provisioner:
             exc.container_public_id = self._container.get("publicId")
             exc.container_path = self._container.get("path")
         return exc
+
+
+def _destination_id(tag):
+    """Read the 'destinationId' parameter out of a Google tag destination."""
+    for parameter in tag.get("parameter") or []:
+        if parameter.get("key") == "destinationId":
+            return parameter.get("value")
+    return None
 
 
 def _constant_value(variable):

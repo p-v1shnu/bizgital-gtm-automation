@@ -148,6 +148,19 @@ class GtmClient(RetryingApiClient):
             f"creating tag {body.get('name')!r}",
         )
 
+    def list_tags(self, workspace_path):
+        response = self._execute(
+            self._workspaces().tags().list(parent=workspace_path),
+            "reading back tags",
+        )
+        return response.get("tag", [])
+
+    def delete_tag(self, tag_path):
+        return self._execute(
+            self._workspaces().tags().delete(path=tag_path),
+            f"deleting tag {tag_path!r}",
+        )
+
     def list_variables(self, workspace_path):
         response = self._execute(
             self._workspaces().variables().list(parent=workspace_path),
