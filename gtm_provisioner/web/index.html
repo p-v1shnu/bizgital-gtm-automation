@@ -228,7 +228,8 @@
 
   var STEP_LABELS = {
     ga4: "สร้าง GA4 property และ data stream",
-    meta: "สร้าง Meta pixel",
+    meta: "สร้าง Meta pixel (หรือเปลี่ยนชื่อ pixel เดิม)",
+    share: "แชร์ pixel ให้บัญชีโฆษณา",
     container: "สร้าง GTM container",
     builtin: "เปิด built-in variables",
     folders: "สร้างโฟลเดอร์",
@@ -305,7 +306,20 @@
     $("btn-dry").disabled = value;
   }
 
-  function renderSteps(steps, dryRun, state) {
+  // Extra wording a step gets once it has finished, so the person reviewing a
+  // run can see what actually happened (e.g. sharing skipped as already done).
+  function stepNote(key, status, result) {
+    if (key === "share" && status === "done") {
+      if (result && result.pixel_share === "already") return " (บัญชีโฆษณานี้มีสิทธิ์อยู่แล้ว ข้ามไป)";
+      if (result && result.pixel_share === "shared") return " (แชร์เรียบร้อย)";
+    }
+    if (key === "meta" && status === "done" && result && result.meta_pixel_id) {
+      return result.pixel_reused ? " (ใช้ pixel เดิม)" : " (สร้างใหม่)";
+    }
+    return "";
+  }
+
+  function renderSteps(steps, dryRun, state, result) {
     var list = $("steps");
     list.replaceChildren();
     if (dryRun) {
@@ -314,7 +328,8 @@
       return;
     }
     STEP_ORDER.forEach(function (key, index) {
-      list.appendChild(stepItem(key, STEP_LABELS[key], steps[key] || "pending", index + 1));
+      var status = steps[key] || "pending";
+      list.appendChild(stepItem(key, STEP_LABELS[key] + stepNote(key, status, result), status, index + 1));
     });
   }
 
@@ -352,7 +367,7 @@
 
   function poll(jobId, since, dryRun) {
     fetch("/api/job/" + jobId + "?since=" + since).then(function (res) { return res.json(); }).then(function (job) {
-      renderSteps(job.steps, dryRun, job.state);
+      renderSteps(job.steps, dryRun, job.state, job.result);
       if (job.lines.length) {
         var log = $("log");
         log.textContent += (log.textContent ? "\n" : "") + job.lines.join("\n");
@@ -482,6 +497,7 @@
         ? "Meta pixel เดิม " + data.values.meta_pixel_id + " จะถูกเปลี่ยนชื่อเป็น “" + data.values.store_name + " - Dataset”"
         : "Meta pixel ใหม่ชื่อ “" + data.values.store_name + " - Dataset”"
     }));
+    list.appendChild(el("li", { text: "แชร์ pixel ให้บัญชีโฆษณาที่ตั้งไว้ใน config (ถ้าบัญชีนั้นมีสิทธิ์อยู่แล้วจะข้าม)" }));
     list.appendChild(el("li", { text: "GTM container ชื่อ " + data.values.domain + " พร้อม publish" }));
     var dup = $("confirm-dup");
     if (data.duplicates && data.duplicates.length) {

@@ -22,6 +22,16 @@ GRAPH_API_BASE = f"https://graph.facebook.com/{GRAPH_API_VERSION}"
 
 RETRYABLE_REQUEST_ERRORS = (requests.exceptions.ConnectionError, requests.exceptions.Timeout)
 
+# A pixel is shared with a handful of ad accounts; this only bounds a runaway
+# paging loop.
+MAX_SHARE_LIST_PAGES = 10
+
+
+def _plain_account_id(value):
+    """Ad account ID without Meta's 'act_' prefix, as a string."""
+    text = str(value or "").strip()
+    return text[4:] if text.startswith("act_") else text
+
 
 class MetaClient:
     """Authenticated access to one Meta ad account, via a System User token."""
@@ -88,14 +98,11 @@ class MetaClient:
                 entity=name,
             ) from exc
 
+        self._log(f"    pixel {validated_id} created under Business {self._config.meta_business_id}")
         try:
-            self._post(
-                f"{GRAPH_API_BASE}/{validated_id}/shared_accounts",
-                {
-                    "business": self._config.meta_business_id,
-                    "account_id": self._config.meta_ad_account_id,
-                },
-                f"sharing Meta pixel {validated_id} with the configured ad account",
+            self._share_with_ad_account(validated_id)
+            self._log(
+                f"    pixel {validated_id} shared with ad account {self._config.meta_ad_account_id}"
             )
         except ProvisioningError as exc:
             raise ProvisioningError(
@@ -108,6 +115,78 @@ class MetaClient:
             ) from exc
         return validated_id
 
+    def _share_with_ad_account(self, pixel_id):
+        return self._post(
+            f"{GRAPH_API_BASE}/{pixel_id}/shared_accounts",
+            {
+                "business": self._config.meta_business_id,
+                "account_id": self._config.meta_ad_account_id,
+            },
+            f"sharing Meta pixel {pixel_id} with the configured ad account",
+        )
+
+    def is_shared_with_ad_account(self, pixel_id):
+        """True if the configured ad account is already on the pixel's share list.
+
+        Reads `GET /{pixel_id}/shared_accounts?business=...`, following the
+        paging links. Meta returns each ad account as `act_<id>` (and, on some
+        responses, also a plain `account_id`), so both forms are compared
+        with the `act_` prefix stripped.
+        """
+        wanted = _plain_account_id(self._config.meta_ad_account_id)
+        description = f"listing the ad accounts Meta pixel {pixel_id} is shared with"
+        page = self._get(
+            f"{GRAPH_API_BASE}/{pixel_id}/shared_accounts",
+            {"business": self._config.meta_business_id, "limit": 100},
+            description,
+        )
+        for _ in range(MAX_SHARE_LIST_PAGES):
+            for account in page.get("data") or []:
+                for key in ("account_id", "id"):
+                    if _plain_account_id(account.get(key)) == wanted:
+                        return True
+            next_url = (page.get("paging") or {}).get("next")
+            if not next_url:
+                return False
+            page = self._send(lambda url=next_url: requests.get(url, timeout=30), description)
+        return False
+
+    def ensure_shared_with_ad_account(self, pixel_id):
+        """Share an existing pixel with the configured ad account unless it
+        already is. Returns "already" or "shared".
+
+        Used when an operator reuses a pixel via --meta-pixel-id: creating a
+        pixel shares it as a side effect, but a reused one may never have
+        been given to this ad account. If the share list cannot be read the
+        share is attempted anyway - it is the call that matters, the list is
+        only there to skip a needless one.
+        """
+        try:
+            if self.is_shared_with_ad_account(pixel_id):
+                self._log(
+                    f"    pixel {pixel_id} is already shared with ad account "
+                    f"{self._config.meta_ad_account_id}; skipping"
+                )
+                return "already"
+        except ProvisioningError as exc:
+            self._log(
+                f"    ~ could not check existing sharing ({exc}); sharing anyway"
+            )
+        try:
+            self._share_with_ad_account(pixel_id)
+        except ProvisioningError as exc:
+            raise ProvisioningError(
+                f"{exc}\n    Pixel {pixel_id} was renamed but is not shared with "
+                f"ad account {self._config.meta_ad_account_id}: share it by hand "
+                "in Business Manager (pixel Settings -> Ad accounts), or fix the "
+                "access and run again with the same --meta-pixel-id.",
+                entity=pixel_id,
+            ) from exc
+        self._log(
+            f"    pixel {pixel_id} shared with ad account {self._config.meta_ad_account_id}"
+        )
+        return "shared"
+
     def rename_pixel(self, pixel_id, name):
         """Rename an existing pixel - used when an operator reuses one via
         --meta-pixel-id instead of creating a new one, so it doesn't keep a
@@ -118,6 +197,7 @@ class MetaClient:
             {"name": name},
             f"renaming Meta pixel {pixel_id} to {name!r}",
         )
+        self._log(f"    pixel {pixel_id} renamed to {name!r}")
 
     # -- request plumbing -------------------------------------------------
 
@@ -131,14 +211,27 @@ class MetaClient:
 
     def _post(self, url, data, description):
         """POST once, retrying a 429/5xx or a network error with backoff."""
+        payload = dict(data, access_token=self._access_token)
+        return self._send(
+            lambda: requests.post(url, data=payload, timeout=30), description
+        )
+
+    def _get(self, url, params, description):
+        """GET once, retrying a 429/5xx or a network error with backoff."""
+        query = dict(params, access_token=self._access_token)
+        return self._send(
+            lambda: requests.get(url, params=query, timeout=30), description
+        )
+
+    def _send(self, send, description):
+        """Run `send()` until it answers 200, retrying only transient failures."""
         delay = self._config.initial_backoff_seconds
         attempts = self._config.max_retries + 1
-        payload = dict(data, access_token=self._access_token)
 
         for attempt in range(1, attempts + 1):
             self._throttle()
             try:
-                response = requests.post(url, data=payload, timeout=30)
+                response = send()
             except RETRYABLE_REQUEST_ERRORS as exc:
                 self._last_request_at = time.monotonic()
                 if attempt == attempts:

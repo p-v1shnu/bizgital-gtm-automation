@@ -55,6 +55,7 @@ def collect_store_inputs(
     website_domain=None,
     meta_pixel_id=None,
     prompt=input,
+    progress=print,
 ):
     """Return validated StoreInputs.
 
@@ -95,16 +96,22 @@ def collect_store_inputs(
         ga4_measurement_id = DRY_RUN_GA4_MEASUREMENT_ID
     else:
         ga4_measurement_id = ga4_client.create_property_and_stream(domain)
+        progress(f"\nGA4 property created, Measurement ID: {ga4_measurement_id}")
 
     pixel_name = f"{name}{PIXEL_NAME_SUFFIX}"
     if meta_pixel_id is not None:
         pixel_id = validate_meta_pixel_id(meta_pixel_id)
         if meta_client is not None:
             meta_client.rename_pixel(pixel_id, pixel_name)
+            # A reused pixel may never have been given to this ad account
+            # (creating one shares it as a side effect; reusing one does not).
+            meta_client.ensure_shared_with_ad_account(pixel_id)
+            progress(f"Meta pixel reused and renamed, ID: {pixel_id}\n")
     elif meta_client is None:
         pixel_id = DRY_RUN_META_PIXEL_ID
     else:
         pixel_id = meta_client.create_pixel(pixel_name)
+        progress(f"Meta pixel created, ID: {pixel_id}\n")
 
     return StoreInputs(
         container_name=domain,

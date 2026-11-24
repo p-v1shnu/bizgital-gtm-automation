@@ -19,6 +19,8 @@ creating a new one (see "Reusing an existing Meta pixel" below).
 2. Creates a Meta pixel named `<store name> - Dataset` under the configured
    Business (or, if `--meta-pixel-id` was given, renames that existing pixel
    instead), and reads back its Pixel ID
+   Shares the pixel with the configured ad account (a reused pixel is shared
+   only if the ad account is not already on its share list)
 3. Creates the container under the configured GTM account
 4. Enables the built-in variables listed in the template
 5. Creates folders and custom templates, if the template has any
@@ -281,6 +283,17 @@ renamed to `<store name> - Dataset` via `meta_client.py`'s `rename_pixel`,
 so it never keeps a stale name in Business Manager. Reuse only a pixel that
 never received real event traffic - reusing one that already has another
 store's history mixes that history into the new store's data.
+
+A freshly created pixel is shared with the configured ad account
+(`meta.ad_account_id`) as part of creation, but a reused pixel was never
+shared by this script, so reuse also does that: it first reads the pixel's
+share list (`GET /{pixel_id}/shared_accounts`) and shares it only if the ad
+account is not already on it; if the account is there the step is skipped.
+If the list cannot be read the share is attempted anyway. A failed share stops
+the run before any container is created and names the pixel, which stays
+renamed - fix the access (or share it by hand in Business Manager) and run
+again with the same `--meta-pixel-id`. The web UI shows this as its own step,
+"แชร์ pixel ให้บัญชีโฆษณา", and notes whether it shared or skipped.
 
 There is deliberately no interactive prompt for this: omitting the flag
 always means "create a new pixel," so an unattended run's behaviour never

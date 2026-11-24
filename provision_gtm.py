@@ -108,7 +108,11 @@ def run(argv=None):
         ga4_client, meta_client, args.store_name, args.domain, args.meta_pixel_id
     )
 
-    pixel_note = "reused, would be renamed" if args.meta_pixel_id else "placeholder"
+    pixel_note = (
+        "reused: would be renamed and shared with the ad account if not already"
+        if args.meta_pixel_id
+        else "placeholder"
+    )
     if args.dry_run:
         print("\nDry run - nothing was sent to the GTM, GA4 or Meta API.")
         print(f"  website domain      {store.container_name}")
@@ -116,12 +120,8 @@ def run(argv=None):
         print(f"  Meta Pixel ID       {store.meta_pixel_id} ({pixel_note})")
         return EXIT_OK
 
-    print(f"\nGA4 property created, Measurement ID: {store.ga4_measurement_id}")
-    if args.meta_pixel_id:
-        print(f"Meta pixel reused and renamed, ID: {store.meta_pixel_id}\n")
-    else:
-        print(f"Meta pixel created, ID: {store.meta_pixel_id}\n")
-
+    # The GA4 and Meta "created" lines are printed by collect_store_inputs the
+    # moment each one happens, so a live view (the web UI) can show progress.
     client = GtmClient.from_config(config)
     provisioner = Provisioner(
         config,

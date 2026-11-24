@@ -27,6 +27,7 @@ class FakeMetaClient:
     def __init__(self, pixel_id="123456789012345"):
         self.requested_names = []
         self.renamed = []
+        self.ensured_shared = []
         self._pixel_id = pixel_id
 
     def create_pixel(self, name):
@@ -35,6 +36,10 @@ class FakeMetaClient:
 
     def rename_pixel(self, pixel_id, name):
         self.renamed.append((pixel_id, name))
+
+    def ensure_shared_with_ad_account(self, pixel_id):
+        self.ensured_shared.append(pixel_id)
+        return "shared"
 
 
 def test_supplied_values_are_validated_and_used_as_is():
@@ -122,6 +127,33 @@ def test_reusing_a_pixel_renames_it_instead_of_creating_a_new_one():
     assert store.meta_pixel_id == "123456789012345"
     assert meta_client.requested_names == []
     assert meta_client.renamed == [("123456789012345", "ShopShop Pigeon - Dataset")]
+    # a reused pixel is also made available to the configured ad account
+    assert meta_client.ensured_shared == ["123456789012345"]
+
+
+def test_a_newly_created_pixel_is_not_shared_a_second_time():
+    """create_pixel already shares it; ensure_shared is only for reused pixels."""
+    meta_client = FakeMetaClient()
+    collect_store_inputs(
+        FakeGa4Client(),
+        meta_client,
+        store_name="ShopShop Pigeon",
+        website_domain="store.shopshop.la",
+    )
+    assert meta_client.ensured_shared == []
+
+
+def test_progress_lines_are_emitted_as_each_id_is_created():
+    lines = []
+    collect_store_inputs(
+        FakeGa4Client(measurement_id="G-ABCDE12345"),
+        FakeMetaClient(pixel_id="123456789012345"),
+        store_name="ShopShop Pigeon",
+        website_domain="store.shopshop.la",
+        progress=lines.append,
+    )
+    assert any("GA4 property created, Measurement ID: G-ABCDE12345" in l for l in lines)
+    assert any("Meta pixel created, ID: 123456789012345" in l for l in lines)
 
 
 def test_a_malformed_reused_pixel_id_raises_immediately_without_renaming():

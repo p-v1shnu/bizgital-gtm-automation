@@ -45,6 +45,7 @@ MAX_LOG_LINES = 5000
 STEPS = (
     ("ga4", False),
     ("meta", False),
+    ("share", False),
     ("container", False),
     ("builtin", False),
     ("folders", True),
@@ -75,6 +76,12 @@ SCRIPT_STEP_KEYS = {
 RE_SCRIPT_STEP = re.compile(r"^\[(\d+[a-z]?)\.")
 RE_GA4_CREATED = re.compile(r"^GA4 property created, Measurement ID: (G-[A-Z0-9]+)")
 RE_PIXEL_DONE = re.compile(r"^Meta pixel (?:created|reused and renamed), ID: (\d+)")
+# Logged by MetaClient as each part of the pixel work happens: the pixel now
+# exists (created or renamed), then it is shared with the ad account - or that
+# is skipped because the ad account already has it.
+RE_PIXEL_READY = re.compile(r"^\s+pixel \d+ (?:created under|renamed to)")
+RE_SHARE_DONE = re.compile(r"^\s+pixel \d+ shared with ad account")
+RE_SHARE_SKIPPED = re.compile(r"^\s+pixel \d+ is already shared with ad account")
 RE_GTM_ID = re.compile(r"GTM container ID: (GTM-[A-Z0-9]+)")
 RE_ERROR = re.compile(r"^(Setup error|Provisioning failed): (.*)")
 RE_PARTIAL_ID = re.compile(r"^\s+public ID:\s+(GTM-[A-Z0-9]+)")
@@ -269,13 +276,25 @@ class Job:
             self.steps["ga4"] = "done"
             self.steps["meta"] = "running"
             return
+        if RE_PIXEL_READY.match(line):
+            self.steps["meta"] = "done"
+            self.steps["share"] = "running"
+            return
+        if RE_SHARE_DONE.match(line):
+            self.result["pixel_share"] = "shared"
+            self.steps["meta"] = "done"
+            self.steps["share"] = "done"
+            return
+        if RE_SHARE_SKIPPED.match(line):
+            self.result["pixel_share"] = "already"
+            self.steps["meta"] = "done"
+            self.steps["share"] = "done"
+            return
         match = RE_PIXEL_DONE.match(line)
         if match:
             self.result["meta_pixel_id"] = match.group(1)
             self.result["pixel_reused"] = "reused" in line
-            self.steps["ga4"] = "done"
-            self.steps["meta"] = "done"
-            self.steps["container"] = "running"
+            self._advance_to("container")
             return
         match = RE_SCRIPT_STEP.match(line)
         if match and match.group(1) in SCRIPT_STEP_KEYS:

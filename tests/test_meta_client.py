@@ -195,3 +195,98 @@ def test_rename_pixel_raises_on_failure(monkeypatch, client):
     )
     with pytest.raises(ProvisioningError, match="No such pixel"):
         client.rename_pixel("999999999999999", "ShopShop Pigeon - Dataset")
+
+
+# -- sharing a reused pixel ------------------------------------------------
+
+
+def _share_list(*account_ids, next_url=None):
+    page = {"data": [{"id": account_id} for account_id in account_ids]}
+    if next_url:
+        page["paging"] = {"next": next_url}
+    return page
+
+
+def test_an_already_shared_pixel_is_skipped_without_posting(monkeypatch, client):
+    gets = []
+
+    def fake_get(url, params=None, timeout=None):
+        gets.append({"url": url, "params": params})
+        return FakeResponse(200, _share_list("act_111", "act_1451413912465476"))
+
+    def no_post(*a, **k):
+        raise AssertionError("must not share a pixel the ad account already has")
+
+    monkeypatch.setattr("gtm_provisioner.meta_client.requests.get", fake_get)
+    monkeypatch.setattr("gtm_provisioner.meta_client.requests.post", no_post)
+
+    assert client.ensure_shared_with_ad_account("123456789012345") == "already"
+    assert gets[0]["url"] == f"{GRAPH_API_BASE}/123456789012345/shared_accounts"
+    assert gets[0]["params"]["business"] == "495054980697867"
+    assert gets[0]["params"]["access_token"] == "fake-system-user-token"
+
+
+def test_a_pixel_missing_the_ad_account_is_shared(monkeypatch, client):
+    posts = []
+    monkeypatch.setattr(
+        "gtm_provisioner.meta_client.requests.get",
+        lambda url, params=None, timeout=None: FakeResponse(200, _share_list("act_111")),
+    )
+
+    def fake_post(url, data, timeout):
+        posts.append({"url": url, "data": data})
+        return FakeResponse(200, {"success": True})
+
+    monkeypatch.setattr("gtm_provisioner.meta_client.requests.post", fake_post)
+
+    assert client.ensure_shared_with_ad_account("123456789012345") == "shared"
+    assert posts[0]["url"] == f"{GRAPH_API_BASE}/123456789012345/shared_accounts"
+    assert posts[0]["data"]["account_id"] == "1451413912465476"
+    assert posts[0]["data"]["business"] == "495054980697867"
+
+
+def test_the_ad_account_on_a_later_page_is_found(monkeypatch, client):
+    pages = {
+        "first": FakeResponse(200, _share_list("act_111", next_url="https://graph/next")),
+        "https://graph/next": FakeResponse(200, _share_list("1451413912465476")),
+    }
+
+    def fake_get(url, params=None, timeout=None):
+        return pages["first"] if params else pages[url]
+
+    monkeypatch.setattr("gtm_provisioner.meta_client.requests.get", fake_get)
+    monkeypatch.setattr(
+        "gtm_provisioner.meta_client.requests.post",
+        lambda *a, **k: (_ for _ in ()).throw(AssertionError("should skip")),
+    )
+    assert client.ensure_shared_with_ad_account("123456789012345") == "already"
+
+
+def test_if_the_share_list_cannot_be_read_the_share_is_attempted_anyway(monkeypatch, client):
+    monkeypatch.setattr(
+        "gtm_provisioner.meta_client.requests.get",
+        lambda url, params=None, timeout=None: FakeResponse(
+            400, {"error": {"message": "Unsupported get request"}}
+        ),
+    )
+    posts = []
+    monkeypatch.setattr(
+        "gtm_provisioner.meta_client.requests.post",
+        lambda url, data, timeout: posts.append(url) or FakeResponse(200, {"success": True}),
+    )
+    assert client.ensure_shared_with_ad_account("123456789012345") == "shared"
+    assert len(posts) == 1
+
+
+def test_a_failed_share_of_a_reused_pixel_names_the_pixel_and_the_fix(monkeypatch, client):
+    monkeypatch.setattr(
+        "gtm_provisioner.meta_client.requests.get",
+        lambda url, params=None, timeout=None: FakeResponse(200, _share_list()),
+    )
+    monkeypatch.setattr(
+        "gtm_provisioner.meta_client.requests.post",
+        lambda *a, **k: FakeResponse(403, {"error": {"message": "No permission"}}),
+    )
+    with pytest.raises(ProvisioningError, match="share it by hand") as caught:
+        client.ensure_shared_with_ad_account("123456789012345")
+    assert "123456789012345" in str(caught.value)

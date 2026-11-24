@@ -296,3 +296,51 @@ def test_taken_port_moves_to_the_next_one(tmp_path):
             second.server_close()
     finally:
         first.server_close()
+
+
+# -- pixel sharing step ------------------------------------------------------
+
+SHARE_SCRIPT = textwrap.dedent(
+    """
+    print("GA4 property created, Measurement ID: G-ABCDEF1234")
+    print("    pixel 123456789012345 renamed to 'S - Dataset'")
+    print("    pixel 123456789012345 is already shared with ad account 1451413912465476; skipping")
+    print("Meta pixel reused and renamed, ID: 123456789012345")
+    print("[1. create container] x")
+    """
+)
+
+
+def test_share_step_is_tracked_and_reports_when_it_was_skipped(tmp_path):
+    manager = webapp.JobManager(
+        builder_for(SHARE_SCRIPT, tmp_path), history_path=tmp_path / "h"
+    )
+    job = wait_for(manager.start({"store_name": "S", "domain": "d.example.com"}))
+    snapshot = job.snapshot()
+    assert snapshot["steps"]["meta"] == "done"
+    assert snapshot["steps"]["share"] == "done"
+    assert snapshot["result"]["pixel_share"] == "already"
+    assert snapshot["result"]["pixel_reused"] is True
+
+
+def test_share_step_shows_running_between_pixel_ready_and_shared():
+    job = webapp.Job({"store_name": "S", "domain": "d.example.com"})
+    job.feed("GA4 property created, Measurement ID: G-ABCDEF1234")
+    job.feed("    pixel 123456789012345 renamed to 'S - Dataset'")
+    steps = job.snapshot()["steps"]
+    assert (steps["ga4"], steps["meta"], steps["share"]) == ("done", "done", "running")
+
+
+def test_a_failed_share_marks_that_step_failed(tmp_path):
+    script = textwrap.dedent(
+        """
+        import sys
+        print("GA4 property created, Measurement ID: G-ABCDEF1234")
+        print("    pixel 123456789012345 renamed to 'S - Dataset'")
+        print("Provisioning failed: sharing failed", file=sys.stderr)
+        sys.exit(1)
+        """
+    )
+    manager = webapp.JobManager(builder_for(script, tmp_path), history_path=tmp_path / "h")
+    job = wait_for(manager.start({"store_name": "S", "domain": "d.example.com"}))
+    assert job.snapshot()["steps"]["share"] == "failed"
