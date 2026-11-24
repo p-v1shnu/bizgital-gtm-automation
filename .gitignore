@@ -92,3 +92,6 @@ htmlcov/
 *.swo
 .DS_Store
 Thumbs.db
+
+# Local web UI run history (store IDs)
+logs/

@@ -35,6 +35,21 @@ and custom templates are prerequisites — variables and tags reference them —
 so they are created before step 6 rather than reordering anything the PRD
 mandates.
 
+## หน้าเว็บสำหรับใช้งาน (GUI ภาษาไทย)
+
+ไม่ต้องพิมพ์คำสั่งใน terminal: ดับเบิลคลิก `open-ui.bat` (หรือรัน `python gui.py`)
+เบราว์เซอร์จะเปิดหน้าเว็บที่ `http://127.0.0.1:8765/` ให้เอง
+
+- กรอกชื่อร้านกับโดเมน (ช่อง Meta Pixel ที่มีอยู่แล้วเป็นตัวเลือกเพิ่มเติม)
+- ปุ่ม **ตรวจสอบก่อน** = dry-run ไม่สร้างอะไรจริง ใช้เช็ก config, ข้อมูลที่กรอก และ template
+- ปุ่ม **สร้างจริง** จะขึ้นหน้ายืนยันก่อนเสมอ และเตือนถ้ามี container ชื่อซ้ำ
+- ระหว่างทำงานจะเห็นความคืบหน้าทีละขั้น ผลลัพธ์ (GTM / GA4 / Pixel ID) มีปุ่มคัดลอก
+- ประวัติการสร้างเก็บที่ `logs/runs.jsonl` (ไม่เข้า git)
+
+หน้าเว็บเป็นแค่ตัวครอบ `provision_gtm.py` (รันเป็น subprocess) จึงทำงานเหมือน
+command line ทุกอย่าง และใช้ได้เฉพาะเครื่องนี้ (ผูกกับ 127.0.0.1 เท่านั้น)
+ถ้าพอร์ต 8765 ถูกใช้อยู่ จะขยับไปพอร์ตถัดไปและแสดง URL ใน terminal
+
 ## Why the trigger remapping matters
 
 GTM assigns `triggerId` at creation time. A tag created with the template's own
