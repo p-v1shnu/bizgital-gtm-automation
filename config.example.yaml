@@ -8,6 +8,24 @@ gtm:
   # Leave empty unless the service account must impersonate a Workspace user
   # through domain-wide delegation.
   impersonate_subject: ""
+  # People to give access to every container this script creates, so you do
+  # not have to add yourself (or an AI tool connected through MCP under another
+  # Google account) by hand afterwards. Optional - leave it out to grant nobody.
+  # Each entry is an email, or a mapping:
+  #   permission     read | edit | approve | publish (default publish) on the
+  #                  new container
+  #   account_access noAccess | user | admin (default noAccess). "admin" gives
+  #                  the same access as the service account itself: the whole
+  #                  GTM account, every container, and who may use them. It is
+  #                  only ever raised, never lowered.
+  # With only an email, access is on the new container alone. Any Google account
+  # works (Gmail, Google Workspace, ...). Needs the service account to be a GTM
+  # account-level Administrator (already required to create containers).
+  # share_with:
+  #   - you@yourcompany.com
+  #   - email: ai-tool@gmail.com
+  #     permission: publish
+  #     account_access: admin
 
 paths:
   # Relative paths are resolved against this file's directory.

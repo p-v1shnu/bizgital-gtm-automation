@@ -141,6 +141,10 @@ class FakeGtmClient:
         self.published_paths = []
         self.auto_created_tags = []  # tags GTM adds on its own, set by a test
         self.deleted_tag_paths = []
+        self.user_permissions = []  # existing records at the account, set by a test
+        self.updated_user_permission_paths = []
+        self.reject_emails = set()  # emails the fake API refuses (not Google accounts)
+        self.fail_listing_permissions = False
         self.container = None
 
     def _next_id(self):
@@ -198,6 +202,36 @@ class FakeGtmClient:
         self.deleted_tag_paths.append(tag_path)
         tag_id = tag_path.rsplit("/", 1)[-1]
         self.auto_created_tags = [t for t in self.auto_created_tags if t["tagId"] != tag_id]
+
+    def list_user_permissions(self):
+        if self.fail_listing_permissions:
+            from gtm_provisioner.errors import ProvisioningError
+
+            raise ProvisioningError("listing user permissions failed with HTTP 403: nope")
+        return [dict(record) for record in self.user_permissions]
+
+    def create_user_permission(self, body):
+        self._reject_if_unwanted(body)
+        record = dict(body, path=f"accounts/111/user_permissions/{len(self.user_permissions) + 1}")
+        self.user_permissions.append(record)
+        return record
+
+    def update_user_permission(self, path, body):
+        self._reject_if_unwanted(body)
+        self.user_permissions = [
+            dict(body) if record["path"] == path else record for record in self.user_permissions
+        ]
+        self.updated_user_permission_paths.append(path)
+        return body
+
+    def _reject_if_unwanted(self, body):
+        if body.get("emailAddress") in self.reject_emails:
+            from gtm_provisioner.errors import ProvisioningError
+
+            raise ProvisioningError(
+                f"creating user permission for {body['emailAddress']!r} failed "
+                "with HTTP 400: not a Google account\n    Hint: ..."
+            )
 
     def list_variables(self, workspace_path):
         return self.created["variable"]

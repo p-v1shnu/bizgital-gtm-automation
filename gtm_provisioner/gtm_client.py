@@ -52,7 +52,14 @@ class GtmClient(RetryingApiClient):
     @staticmethod
     def _describe_http_error(exc, status, description):
         message = f"{description} failed with HTTP {status}: {exc}"
-        if status == 403:
+        if "user permission" in description and status in (400, 403):
+            message += (
+                "\n    Hint: managing who can use a container needs the service "
+                "account to be an account-level Administrator in GTM, and the "
+                "email must belong to a Google account (Gmail, Google Workspace, "
+                "or another address registered as a Google account)."
+            )
+        elif status == 403:
             message += (
                 "\n    Hint: the service account needs GTM *account-level* access "
                 "with publish permission. Container-level access is not enough to "
@@ -167,6 +174,36 @@ class GtmClient(RetryingApiClient):
             "reading back variables",
         )
         return response.get("variable", [])
+
+    # -- who can use the container ---------------------------------------
+
+    def list_user_permissions(self):
+        """Return every user permission under the configured account."""
+        permissions = []
+        page_token = None
+        while True:
+            request = self._service.accounts().user_permissions().list(
+                parent=self._account_path, pageToken=page_token
+            )
+            response = self._execute(request, "listing user permissions")
+            permissions.extend(response.get("userPermission", []))
+            page_token = response.get("nextPageToken")
+            if not page_token:
+                return permissions
+
+    def create_user_permission(self, body):
+        return self._execute(
+            self._service.accounts()
+            .user_permissions()
+            .create(parent=self._account_path, body=body),
+            f"creating user permission for {body.get('emailAddress')!r}",
+        )
+
+    def update_user_permission(self, path, body):
+        return self._execute(
+            self._service.accounts().user_permissions().update(path=path, body=body),
+            f"updating user permission for {body.get('emailAddress')!r}",
+        )
 
     # -- version and publish ---------------------------------------------
 

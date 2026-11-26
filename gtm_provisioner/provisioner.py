@@ -16,6 +16,7 @@ STEP_TRIGGERS = "4. create triggers"
 STEP_TAGS = "5. create tags"
 STEP_VERIFY_IDS = "6. verify store-specific IDs"
 STEP_PUBLISH = "7. create version and publish"
+STEP_ACCESS = "8. grant container access"
 
 
 @dataclass
@@ -85,6 +86,10 @@ class Provisioner:
             version_id = self._create_version_and_publish(store)
         except ProvisioningError as exc:
             raise self._with_container_context(exc) from exc
+
+        # After publish, and never fatal: the container is already live, so a
+        # person who cannot be added is reported but does not fail the run.
+        self._grant_container_access()
 
         result = ProvisioningResult(
             public_id=self._container["publicId"],
@@ -288,6 +293,78 @@ class Provisioner:
         self._log(f"    published version {version.get('containerVersionId')}")
         return version.get("containerVersionId", "")
 
+    def _grant_container_access(self):
+        """Give each configured person access to the container just created.
+
+        The container is created by the service account, and an account-level
+        Admin does not automatically get Publish on a container it did not
+        create - so without this each person has to be added by hand in GTM.
+        Access is granted on this container only (not account-wide), a person
+        who already has a permission record keeps everything else on it, and a
+        person who already has the wanted level is skipped.
+        """
+        people = self._config.gtm_share_with
+        if not people:
+            return
+        self._mark(STEP_ACCESS)
+        self._log(f"[{STEP_ACCESS}] {len(people)} to grant")
+        try:
+            existing = {
+                (record.get("emailAddress") or "").lower(): record
+                for record in self._client.list_user_permissions()
+            }
+        except ProvisioningError as exc:
+            for email, permission, _account in people:
+                self._log_access_failure(email, permission, exc)
+            return
+        for email, permission, account_access in people:
+            self._mark(STEP_ACCESS, email)
+            try:
+                self._grant_one(
+                    existing.get(email.lower()), email, permission, account_access
+                )
+            except ProvisioningError as exc:
+                self._log_access_failure(email, permission, exc)
+
+    def _grant_one(self, current, email, permission, account_access):
+        container_id = self._container["containerId"]
+        entry = {"containerId": container_id, "permission": permission}
+        if current is None:
+            self._client.create_user_permission(
+                {
+                    "emailAddress": email,
+                    "accountAccess": {"permission": account_access},
+                    "containerAccess": [entry],
+                }
+            )
+            self._log(f"    access granted: {email} -> {permission}{_account_note(account_access)}")
+            return
+
+        access = [dict(item) for item in current.get("containerAccess") or []]
+        same = next((item for item in access if item.get("containerId") == container_id), None)
+        have = (current.get("accountAccess") or {}).get("permission") or "noAccess"
+        # Account-level access is only ever raised, never lowered: someone who
+        # is already an admin stays one whatever the config entry says.
+        wanted = max(have, account_access, key=_account_rank)
+        container_ok = bool(same) and same.get("permission") == permission
+        if container_ok and wanted == have:
+            self._log(f"    access already set: {email} -> {permission}; skipped")
+            return
+        if same:
+            same["permission"] = permission
+        else:
+            access.append(entry)
+        self._client.update_user_permission(
+            current["path"],
+            dict(current, containerAccess=access, accountAccess={"permission": wanted}),
+        )
+        note = _account_note(wanted) if wanted != have else ""
+        self._log(f"    access granted: {email} -> {permission}{note}")
+
+    def _log_access_failure(self, email, permission, exc):
+        reason = str(exc).splitlines()[0] if str(exc) else "unknown error"
+        self._log(f"  ! access NOT granted: {email} -> {permission}: {reason}")
+
     # -- reporting -------------------------------------------------------
 
     def _warn_about_unsupported_entities(self):
@@ -337,6 +414,18 @@ class Provisioner:
             exc.container_public_id = self._container.get("publicId")
             exc.container_path = self._container.get("path")
         return exc
+
+
+_ACCOUNT_RANK = {"noAccess": 0, "user": 1, "admin": 2}
+
+
+def _account_rank(level):
+    return _ACCOUNT_RANK.get(level, 0)
+
+
+def _account_note(account_access):
+    """Log suffix naming account-level access, or nothing when there is none."""
+    return f" + account {account_access}" if account_access != "noAccess" else ""
 
 
 def _destination_id(tag):
