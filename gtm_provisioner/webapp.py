@@ -24,8 +24,15 @@ from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-from .config import DEFAULT_CONFIG_PATH, check_local_files, load_config
-from .errors import ValidationError
+from .config import (
+    DEFAULT_ACCOUNT_ACCESS,
+    DEFAULT_CONFIG_PATH,
+    DEFAULT_SHARE_PERMISSION,
+    check_local_files,
+    load_config,
+    parse_share_with,
+)
+from .errors import ConfigError, ValidationError
 from .validators import (
     validate_meta_pixel_id,
     validate_store_name,
@@ -36,6 +43,10 @@ ROOT = Path(__file__).resolve().parent.parent
 SCRIPT = ROOT / "provision_gtm.py"
 STATIC_DIR = Path(__file__).resolve().parent / "web"
 HISTORY_PATH = ROOT / "logs" / "runs.jsonl"
+# Who gets access to new containers, as last edited in the page. Kept on disk
+# (git-ignored) rather than in the browser because the page's port can change
+# between launches, and browser storage is per origin.
+SETTINGS_PATH = ROOT / "ui_settings.json"
 DEFAULT_PORT = 8765
 MAX_BODY_BYTES = 16 * 1024
 MAX_LOG_LINES = 5000
@@ -55,6 +66,7 @@ STEPS = (
     ("tags", False),
     ("verify", False),
     ("publish", False),
+    ("access", True),
 )
 STEP_ORDER = [key for key, _ in STEPS]
 OPTIONAL_STEPS = {key for key, optional in STEPS if optional}
@@ -71,6 +83,7 @@ SCRIPT_STEP_KEYS = {
     "5": "tags",
     "6": "verify",
     "7": "publish",
+    "8": "access",
 }
 
 RE_SCRIPT_STEP = re.compile(r"^\[(\d+[a-z]?)\.")
@@ -82,6 +95,10 @@ RE_PIXEL_DONE = re.compile(r"^Meta pixel (?:created|reused and renamed), ID: (\d
 RE_PIXEL_READY = re.compile(r"^\s+pixel \d+ (?:created under|renamed to)")
 RE_SHARE_DONE = re.compile(r"^\s+pixel \d+ shared with ad account")
 RE_SHARE_SKIPPED = re.compile(r"^\s+pixel \d+ is already shared with ad account")
+# One line per person from the "grant container access" step.
+RE_ACCESS_GRANTED = re.compile(r"^\s+access granted: (\S+) -> (\w+)(?: \+ account (\w+))?")
+RE_ACCESS_SKIPPED = re.compile(r"^\s+access already set: (\S+) -> (\w+); skipped")
+RE_ACCESS_FAILED = re.compile(r"^\s+! access NOT granted: (\S+) -> (\w+): (.*)")
 RE_GTM_ID = re.compile(r"GTM container ID: (GTM-[A-Z0-9]+)")
 RE_ERROR = re.compile(r"^(Setup error|Provisioning failed): (.*)")
 RE_PARTIAL_ID = re.compile(r"^\s+public ID:\s+(GTM-[A-Z0-9]+)")
@@ -109,11 +126,94 @@ def build_command(params, python=None, script=None):
         f"--domain={params['domain']}",
         "--yes",
     ]
+    share = params.get("share_with")
+    if share is not None:  # None = not specified: the config file decides
+        if share:
+            command.extend(
+                f"--share-with={p['email']}:{p['permission']}:{p['account_access']}"
+                for p in share
+            )
+        else:
+            command.append("--no-share")
     if params.get("meta_pixel_id"):
         command.append(f"--meta-pixel-id={params['meta_pixel_id']}")
     if params.get("dry_run"):
         command.append("--dry-run")
     return command
+
+
+def _share_error_th(message):
+    """Thai text for a ConfigError raised while parsing the access list."""
+    if "invalid email" in message:
+        shown = message.split("address:", 1)[-1].strip().rstrip(".")
+        return f"อีเมลไม่ถูกต้อง: {shown}"
+    if "more than once" in message:
+        return "มีอีเมลซ้ำในรายชื่อ"
+    if "account_access" in message:
+        return "ระดับสิทธิ์ของ Account ไม่ถูกต้อง"
+    if "permission" in message:
+        return "ระดับสิทธิ์ใน container ไม่ถูกต้อง"
+    return "รายชื่อผู้ที่จะได้สิทธิ์ไม่ถูกต้อง"
+
+
+def normalise_share_list(raw):
+    """Validate the page's access list.
+
+    Returns ``(list_of_dicts, None)`` with defaults filled in and levels
+    normalised, or ``([], thai_error_message)``. The same rules as
+    gtm.share_with in the config file apply.
+    """
+    if not isinstance(raw, list) or not all(isinstance(item, dict) for item in raw):
+        return [], "รูปแบบรายชื่อผู้ที่จะได้สิทธิ์ไม่ถูกต้อง"
+    entries = [
+        {
+            "email": str(item.get("email") or "").strip(),
+            "permission": item.get("permission") or DEFAULT_SHARE_PERMISSION,
+            "account_access": item.get("account_access") or DEFAULT_ACCOUNT_ACCESS,
+        }
+        for item in raw
+    ]
+    try:
+        people = parse_share_with(entries)
+    except ConfigError as exc:
+        return [], _share_error_th(str(exc))
+    return (
+        [
+            {"email": email, "permission": permission, "account_access": account_access}
+            for email, permission, account_access in people
+        ],
+        None,
+    )
+
+
+def read_saved_share(path):
+    """The access list saved by the page, or None if nothing was ever saved."""
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            saved = json.load(handle).get("share_with")
+    except (OSError, ValueError, AttributeError):
+        return None
+    people, error = normalise_share_list(saved)
+    return None if error else people
+
+
+def write_saved_share(path, people):
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w", encoding="utf-8") as handle:
+        json.dump({"share_with": people}, handle, ensure_ascii=False, indent=2)
+
+
+def default_share_list(config_path):
+    """What the page starts with before anything is saved: the config file's list."""
+    try:
+        config = load_config(config_path)
+    except Exception:
+        return []
+    return [
+        {"email": e, "permission": p, "account_access": a}
+        for e, p, a in config.gtm_share_with
+    ]
 
 
 FIELD_ERRORS_TH = {
@@ -170,6 +270,14 @@ def check_inputs(payload, config_path=DEFAULT_CONFIG_PATH, list_container_names=
             values["meta_pixel_id"] = validate_meta_pixel_id(pixel)
         except ValidationError as exc:
             errors["meta_pixel_id"] = thai_field_error("meta_pixel_id", exc.message)
+    # When the page sends its access list it replaces the config file's for
+    # this run (an empty list means nobody); when absent the config decides.
+    if "share_with" in payload:
+        share, share_error = normalise_share_list(payload["share_with"])
+        if share_error:
+            errors["share_with"] = share_error
+        else:
+            values["share_with"] = share
 
     dry_run = bool(payload.get("dry_run"))
     setup_problems = []
@@ -208,6 +316,13 @@ def check_inputs(payload, config_path=DEFAULT_CONFIG_PATH, list_container_names=
         "values": values,
         "setup_problems": setup_problems,
         "duplicates": duplicates,
+        # who will be given access to the new container (shown in the confirm box)
+        "share_with": values.get("share_with")
+        if "share_with" in values
+        else [
+            {"email": email, "permission": permission, "account_access": account_access}
+            for email, permission, account_access in (config.gtm_share_with if config else ())
+        ],
     }
 
 
@@ -300,6 +415,24 @@ class Job:
         if match and match.group(1) in SCRIPT_STEP_KEYS:
             self._advance_to(SCRIPT_STEP_KEYS[match.group(1)])
             return
+        for pattern, status in (
+            (RE_ACCESS_GRANTED, "granted"),
+            (RE_ACCESS_SKIPPED, "already"),
+            (RE_ACCESS_FAILED, "failed"),
+        ):
+            match = pattern.match(line)
+            if match:
+                entry = {
+                    "email": match.group(1),
+                    "permission": match.group(2),
+                    "status": status,
+                }
+                if status == "failed":
+                    entry["reason"] = match.group(3)
+                elif status == "granted" and match.group(3):
+                    entry["account_access"] = match.group(3)
+                self.result.setdefault("access", []).append(entry)
+                return
         match = RE_GTM_ID.search(line)
         if match:
             self.result["gtm_public_id"] = match.group(1)
@@ -336,6 +469,9 @@ class Job:
 
     def snapshot(self, since=0):
         with self._lock:
+            result = dict(self.result)
+            if "access" in result:  # copy: feed() may append while this is serialised
+                result["access"] = [dict(entry) for entry in result["access"]]
             return {
                 "id": self.id,
                 "state": self.state,
@@ -344,7 +480,7 @@ class Job:
                 "steps": dict(self.steps),
                 "lines": self.lines[since:],
                 "next": len(self.lines),
-                "result": dict(self.result),
+                "result": result,
                 "template_counts": dict(self.template_counts),
                 "error": self.error,
                 "partial_container": self.partial_container,
@@ -412,6 +548,10 @@ class JobManager:
             },
             "partial_container": job.partial_container,
             "error": job.error,
+            "access": [
+                f"{a['email']}:{a['permission']}:{a['status']}"
+                for a in job.result.get("access", [])
+            ],
         }
         try:
             self._history_path.parent.mkdir(parents=True, exist_ok=True)
@@ -429,7 +569,8 @@ class JobManager:
         return list(reversed(rows[-limit:]))
 
 
-def make_handler(manager, config_path=DEFAULT_CONFIG_PATH, list_container_names=None):
+def make_handler(manager, config_path=DEFAULT_CONFIG_PATH, list_container_names=None,
+                 settings_path=SETTINGS_PATH):
     class Handler(BaseHTTPRequestHandler):
         server_version = "GtmProvisionerUI"
 
@@ -488,6 +629,13 @@ def make_handler(manager, config_path=DEFAULT_CONFIG_PATH, list_container_names=
                 return self._send(200, page, "text/html; charset=utf-8")
             if path == "/api/history":
                 return self._send(200, {"runs": manager.history()})
+            if path == "/api/settings":
+                saved = read_saved_share(settings_path)
+                if saved is not None:
+                    return self._send(200, {"share_with": saved, "source": "saved"})
+                return self._send(
+                    200, {"share_with": default_share_list(config_path), "source": "config"}
+                )
             if path.startswith("/api/job/"):
                 job = manager.get(path[len("/api/job/"):])
                 if job is None:
@@ -506,6 +654,15 @@ def make_handler(manager, config_path=DEFAULT_CONFIG_PATH, list_container_names=
             payload = self._read_json()
             if payload is None:
                 return None
+            if self.path == "/api/settings":
+                people, error = normalise_share_list(payload.get("share_with"))
+                if error:
+                    return self._send(422, {"error": error})
+                try:
+                    write_saved_share(settings_path, people)
+                except OSError as exc:
+                    return self._send(500, {"error": f"บันทึกไม่ได้: {exc}"})
+                return self._send(200, {"share_with": people, "source": "saved"})
             if self.path == "/api/check":
                 return self._send(
                     200, check_inputs(payload, config_path, list_container_names)
@@ -521,6 +678,7 @@ def make_handler(manager, config_path=DEFAULT_CONFIG_PATH, list_container_names=
                     "domain": checked["values"]["domain"],
                     "meta_pixel_id": checked["values"].get("meta_pixel_id"),
                     "dry_run": bool(payload.get("dry_run")),
+                    "share_with": checked["values"].get("share_with"),
                 }
                 try:
                     job = manager.start(params)
@@ -541,10 +699,10 @@ class _LocalServer(ThreadingHTTPServer):
 
 
 def create_server(port=DEFAULT_PORT, manager=None, config_path=DEFAULT_CONFIG_PATH,
-                  list_container_names=None):
+                  list_container_names=None, settings_path=SETTINGS_PATH):
     """Bind the UI server on 127.0.0.1, trying the next ports if `port` is taken."""
     manager = manager or JobManager()
-    handler = make_handler(manager, config_path, list_container_names)
+    handler = make_handler(manager, config_path, list_container_names, settings_path)
     last_error = None
     for candidate in range(port, port + 20) if port else (0,):
         try:

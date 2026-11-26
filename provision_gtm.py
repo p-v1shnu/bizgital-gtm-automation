@@ -15,7 +15,14 @@ Usage:
 import argparse
 import sys
 
-from gtm_provisioner.config import DEFAULT_CONFIG_PATH, check_local_files, load_config
+from gtm_provisioner.config import (
+    DEFAULT_CONFIG_PATH,
+    check_local_files,
+    load_config,
+    parse_share_flag,
+    parse_share_with,
+    with_share_with,
+)
 from gtm_provisioner.errors import ConfigError, ProvisioningError, ValidationError
 from gtm_provisioner.ga4_client import Ga4Client
 from gtm_provisioner.gtm_client import GtmClient
@@ -69,6 +76,22 @@ def parse_args(argv=None):
         action="store_true",
         help="do not stop to confirm a duplicate container name",
     )
+    parser.add_argument(
+        "--share-with",
+        action="append",
+        metavar="EMAIL[:PERMISSION[:ACCOUNT_ACCESS]]",
+        help=(
+            "give this person access to the new container (repeatable); "
+            "PERMISSION is read|edit|approve|publish (default publish), "
+            "ACCOUNT_ACCESS is noAccess|user|admin (default noAccess). "
+            "Replaces gtm.share_with from the config for this run"
+        ),
+    )
+    parser.add_argument(
+        "--no-share",
+        action="store_true",
+        help="grant nobody access this run, ignoring gtm.share_with in the config",
+    )
     return parser.parse_args(argv)
 
 
@@ -80,6 +103,13 @@ def run(argv=None):
     args = parse_args(argv)
 
     config = load_config(args.config)
+    if args.no_share:
+        config = with_share_with(config, ())
+    elif args.share_with:
+        config = with_share_with(
+            config,
+            parse_share_with([parse_share_flag(text) for text in args.share_with]),
+        )
     if args.dry_run:
         if not check_template_only(config):
             return EXIT_BAD_SETUP

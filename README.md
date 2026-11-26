@@ -52,6 +52,47 @@ mandates.
 command line ทุกอย่าง และใช้ได้เฉพาะเครื่องนี้ (ผูกกับ 127.0.0.1 เท่านั้น)
 ถ้าพอร์ต 8765 ถูกใช้อยู่ จะขยับไปพอร์ตถัดไปและแสดง URL ใน terminal
 
+## Giving people access to the new container
+
+The service account creates each container, and an account-level Admin does
+not automatically get Publish on a container it did not create, so people
+otherwise have to be added by hand in GTM. Set `gtm.share_with` in
+`config.yaml` (see `config.example.yaml`) and the script adds them as step 8,
+after the container is published:
+
+```yaml
+gtm:
+  share_with:
+    - you@yourcompany.com            # publish (the default)
+    - email: ai-tool@gmail.com       # e.g. the Google account an MCP tool signs in as
+      permission: publish            # read | edit | approve | publish
+      account_access: admin          # optional; noAccess (default) | user | admin
+```
+
+**In the web UI** the same list is edited on the page itself: add several
+emails, pick a level for each (container only: publish / edit / read, or
+Admin of the whole account, matching the service account), and remove any of
+them before creating. Changes are saved at once to `ui_settings.json` (git-ignored)
+and remembered the next time the program opens; until something is saved the
+page starts from `gtm.share_with` in the config. A run from the page uses the
+page's list instead of the config's, and an empty list grants nobody. The
+command line has the same override: `--share-with EMAIL[:PERMISSION[:ACCOUNT_ACCESS]]`
+(repeatable) or `--no-share`.
+
+- A bare email gets access on the new container only. Add
+  `account_access: admin` to give the same level as the service account
+  itself: the whole GTM account and every container in it, including who may
+  use them, so it suits a person (or AI tool) you trust fully. It is only ever
+  raised, never lowered.
+- Someone who already has a permission record keeps everything else on it;
+  someone who already has the wanted level on this container is skipped.
+- It is never fatal: the container is already published, so an email GTM
+  refuses (for example, one with no Google account behind it) is reported in
+  the log and the web UI and the run still succeeds.
+- Requesting this adds the `tagmanager.manage.users` scope. The service account
+  must be an account-level Administrator in GTM, which creating containers
+  already requires. GA4 and Meta access are not handled here.
+
 ## Why the trigger remapping matters
 
 GTM assigns `triggerId` at creation time. A tag created with the template's own

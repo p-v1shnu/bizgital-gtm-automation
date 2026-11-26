@@ -95,3 +95,6 @@ Thumbs.db
 
 # Local web UI run history (store IDs)
 logs/
+
+# Who the web UI gives access to new containers (emails)
+ui_settings.json

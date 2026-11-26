@@ -76,6 +76,23 @@
   }
   input[aria-invalid=true] { border-color: var(--err); }
   .field-error { color: var(--err); font-size: 0.875rem; margin: 4px 0 0; min-height: 1.2em; }
+  fieldset.share { border: 0; padding: 0; margin: 0 0 16px; min-width: 0; }
+  fieldset.share legend { font-weight: 600; padding: 0; margin-bottom: 4px; }
+  .share-list { list-style: none; margin: 8px 0; padding: 0; }
+  .share-list li {
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    padding: 8px 10px; margin-bottom: 6px;
+    background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
+  }
+  .share-list .who { flex: 1 1 200px; font-family: var(--mono); font-size: 0.9rem; word-break: break-all; }
+  .share-add { display: flex; gap: 8px; flex-wrap: wrap; }
+  .share-add input { flex: 1 1 220px; }
+  select {
+    font: inherit; color: var(--text); background: var(--bg);
+    border: 1px solid var(--border); border-radius: 8px; padding: 9px 10px;
+  }
+  select:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  button.small { padding: 6px 12px; font-weight: 500; }
   details { margin-bottom: 16px; }
   summary { cursor: pointer; font-weight: 600; color: var(--accent); }
   details > .field { margin-top: 12px; }
@@ -171,6 +188,18 @@
       <p class="hint" id="domain_hint">ใช้เป็นชื่อ GTM container และ GA4 property ใส่ https:// มาได้ ระบบตัดให้</p>
       <p class="field-error" id="domain_err"></p>
     </div>
+    <fieldset class="field share" id="share-field">
+      <legend>ให้สิทธิ์ใน GTM container ที่สร้าง</legend>
+      <p class="hint" id="share_hint">ใส่ได้หลายอีเมล (ต้องเป็นบัญชี Google) ระบบจำรายชื่อนี้ไว้ให้ ครั้งหน้าเปิดมาก็ยังอยู่ ลบอีเมลที่ไม่ต้องการก่อนกดสร้างได้ ถ้าไม่มีรายชื่อ จะไม่ให้สิทธิ์ใครเลย</p>
+      <ul class="share-list" id="share-list" aria-label="รายชื่อผู้ที่จะได้สิทธิ์"></ul>
+      <div class="share-add">
+        <input type="text" id="share_email" inputmode="email" autocomplete="off" placeholder="อีเมลที่จะให้สิทธิ์" aria-label="อีเมลที่จะให้สิทธิ์" aria-describedby="share_with_err">
+        <select id="share_level" aria-label="ระดับสิทธิ์"></select>
+        <button type="button" id="share_add">เพิ่ม</button>
+      </div>
+      <p class="field-error" id="share_with_err" role="alert"></p>
+      <p class="hint" id="share_status" aria-live="polite"></p>
+    </fieldset>
     <details id="advanced">
       <summary>ตัวเลือกเพิ่มเติม</summary>
       <div class="field">
@@ -238,8 +267,11 @@
     triggers: "สร้าง triggers",
     tags: "สร้าง tags",
     verify: "ตรวจว่า ID ของร้านใส่ถูกต้อง",
-    publish: "สร้าง version และ publish"
+    publish: "สร้าง version และ publish",
+    access: "ให้สิทธิ์ผู้ใช้ใน container"
   };
+  var ACCESS_STATUS_TEXT = { granted: "ให้สิทธิ์แล้ว", already: "มีสิทธิ์อยู่แล้ว ข้ามไป", failed: "ไม่สำเร็จ" };
+  var SKIPPED_TEXT = { access: " (ยังไม่ได้ตั้งรายชื่อใน config)" };
   var STEP_ORDER = Object.keys(STEP_LABELS);
   var FIELD_NAMES = ["store_name", "domain", "meta_pixel_id"];
   var STATE_TEXT = { done: "สำเร็จ", warning: "ต้องตรวจสอบ", failed: "ไม่สำเร็จ" };
@@ -264,11 +296,13 @@
     return {
       store_name: $("store_name").value,
       domain: $("domain").value,
-      meta_pixel_id: $("meta_pixel_id").value
+      meta_pixel_id: $("meta_pixel_id").value,
+      share_with: shareList.map(function (entry) { return Object.assign({}, entry); })
     };
   }
 
   function showFieldErrors(errors) {
+    $("share_with_err").textContent = (errors || {}).share_with || "";
     FIELD_NAMES.forEach(function (name) {
       var message = (errors || {})[name] || "";
       $(name + "_err").textContent = message;
@@ -313,6 +347,16 @@
       if (result && result.pixel_share === "already") return " (บัญชีโฆษณานี้มีสิทธิ์อยู่แล้ว ข้ามไป)";
       if (result && result.pixel_share === "shared") return " (แชร์เรียบร้อย)";
     }
+    if (key === "access" && result && result.access && result.access.length) {
+      var count = function (name) {
+        return result.access.filter(function (a) { return a.status === name; }).length;
+      };
+      var parts = [];
+      if (count("granted")) parts.push("ให้สิทธิ์ " + count("granted") + " อีเมล");
+      if (count("already")) parts.push("มีอยู่แล้ว " + count("already"));
+      if (count("failed")) parts.push("ไม่สำเร็จ " + count("failed"));
+      return " (" + parts.join(", ") + ")";
+    }
     if (key === "meta" && status === "done" && result && result.meta_pixel_id) {
       return result.pixel_reused ? " (ใช้ pixel เดิม)" : " (สร้างใหม่)";
     }
@@ -337,7 +381,7 @@
     var mark = status === "done" ? "✓" : status === "failed" ? "✕" : status === "skipped" ? "–" : status === "running" ? "" : String(number);
     var item = el("li", { "data-status": status }, [
       el("span", { "class": "dot", "aria-hidden": "true", text: mark }),
-      el("span", { text: label + (status === "skipped" ? " (ไม่มีใน template)" : "") })
+      el("span", { text: label + (status === "skipped" ? (SKIPPED_TEXT[key] || " (ไม่มีใน template)") : "") })
     ]);
     return item;
   }
@@ -440,6 +484,20 @@
     if (job.result.gtm_public_id) ids.appendChild(idRow("GTM Container ID (ติดตั้งบนเว็บร้าน)", job.result.gtm_public_id, true));
     if (job.result.ga4_measurement_id) ids.appendChild(idRow("GA4 Measurement ID", job.result.ga4_measurement_id));
     if (job.result.meta_pixel_id) ids.appendChild(idRow("Meta Pixel ID" + (job.result.pixel_reused ? " (ใช้ของเดิม)" : ""), job.result.meta_pixel_id));
+    (job.result.access || []).forEach(function (entry) {
+      var text = entry.permission + (entry.account_access === "admin" ? " + Admin ทั้ง Account" : "") + " · " + ACCESS_STATUS_TEXT[entry.status] + (entry.reason ? " (" + entry.reason + ")" : "");
+      ids.appendChild(el("div", { "class": "id-row" }, [el("div", {}, [
+        el("div", { "class": "id-label", text: "สิทธิ์ใน container" }),
+        el("div", { "class": "id-value", text: entry.email }),
+        el("div", { "class": "hint", text: text })
+      ])]));
+    });
+    if ((job.result.access || []).some(function (entry) { return entry.status === "failed"; })) {
+      banner.appendChild(el("div", { "class": "banner warn", role: "alert" }, [
+        el("strong", { text: "ให้สิทธิ์บางอีเมลไม่สำเร็จ" }),
+        el("div", { text: "container สร้างและ publish เรียบร้อยแล้ว แต่ต้องเพิ่มสิทธิ์อีเมลที่ล้มเหลวเองใน GTM (Admin → User Management) เหตุผลดูด้านล่างและใน log" })
+      ]));
+    }
     if (job.result.gtm_public_id) {
       $("result-note").textContent = "นำ GTM ID ไปติดตั้งบนเว็บร้าน แล้วเปิด container ใน GTM เพื่อเช็กว่าทุก tag มี trigger ที่ถูกต้อง";
     }
@@ -499,6 +557,15 @@
     }));
     list.appendChild(el("li", { text: "แชร์ pixel ให้บัญชีโฆษณาที่ตั้งไว้ใน config (ถ้าบัญชีนั้นมีสิทธิ์อยู่แล้วจะข้าม)" }));
     list.appendChild(el("li", { text: "GTM container ชื่อ " + data.values.domain + " พร้อม publish" }));
+    if (!data.share_with || !data.share_with.length) {
+      list.appendChild(el("li", { text: "ไม่ได้ให้สิทธิ์ใครเพิ่มใน container นี้ (รายชื่อว่าง)" }));
+    } else {
+      list.appendChild(el("li", {
+        text: "ให้สิทธิ์ใน container นี้แก่: " + data.share_with.map(function (p) {
+          return p.email + " (" + p.permission + (p.account_access === "admin" ? " + Admin ทั้ง Account" : p.account_access === "user" ? " + User ระดับ Account" : "") + ")";
+        }).join(", ")
+      }));
+    }
     var dup = $("confirm-dup");
     if (data.duplicates && data.duplicates.length) {
       dup.textContent = "มี container ชื่อนี้อยู่แล้วในบัญชี (" + data.duplicates.join(", ") + ") ถ้ากดยืนยันจะสร้างซ้ำอีกอัน";
@@ -515,6 +582,102 @@
     $("confirm-cancel").onclick = function () { dialog.close(); };
     dialog.showModal();
   }
+
+  // ---- who gets access to the new container -------------------------------
+  // The list lives on the server (ui_settings.json) so it survives closing the
+  // program; every change is saved straight away and the saved list is what a
+  // run uses.
+  var shareList = [];
+  var SHARE_LEVELS = [
+    { key: "publish|noAccess", label: "เฉพาะ container นี้ · แก้ไขและ publish" },
+    { key: "edit|noAccess", label: "เฉพาะ container นี้ · แก้ไขอย่างเดียว" },
+    { key: "read|noAccess", label: "เฉพาะ container นี้ · ดูอย่างเดียว" },
+    { key: "publish|admin", label: "Admin ทั้ง Account (เท่า API account)" }
+  ];
+
+  function levelKey(entry) { return entry.permission + "|" + entry.account_access; }
+
+  function levelOptions(select, currentKey) {
+    select.replaceChildren();
+    var levels = SHARE_LEVELS.slice();
+    if (currentKey && !levels.some(function (l) { return l.key === currentKey; })) {
+      var parts = currentKey.split("|");
+      levels.push({ key: currentKey, label: "กำหนดเอง (" + parts[0] + " / Account: " + parts[1] + ")" });
+    }
+    levels.forEach(function (level) {
+      var option = el("option", { value: level.key, text: level.label });
+      if (level.key === currentKey) option.selected = true;
+      select.appendChild(option);
+    });
+  }
+
+  function renderShare() {
+    var list = $("share-list");
+    list.replaceChildren();
+    shareList.forEach(function (entry, index) {
+      var select = el("select", { "aria-label": "ระดับสิทธิ์ของ " + entry.email });
+      levelOptions(select, levelKey(entry));
+      select.addEventListener("change", function () {
+        var parts = select.value.split("|");
+        var next = shareList.map(function (e) { return Object.assign({}, e); });
+        next[index].permission = parts[0];
+        next[index].account_access = parts[1];
+        saveShare(next, "บันทึกการเปลี่ยนระดับสิทธิ์แล้ว");
+      });
+      var remove = el("button", { type: "button", "class": "small", "aria-label": "ลบ " + entry.email, text: "ลบ" });
+      remove.addEventListener("click", function () {
+        saveShare(shareList.filter(function (_, i) { return i !== index; }), "ลบ " + entry.email + " ออกแล้ว");
+      });
+      list.appendChild(el("li", {}, [el("span", { "class": "who", text: entry.email }), select, remove]));
+    });
+    if (!shareList.length) {
+      list.appendChild(el("li", { "class": "hint", text: "ยังไม่มีรายชื่อ จะไม่ให้สิทธิ์ใครเลย" }));
+    }
+  }
+
+  function saveShare(next, message) {
+    $("share_with_err").textContent = "";
+    return post("/api/settings", { share_with: next }).then(function (res) {
+      if (res.status === 200) {
+        shareList = res.data.share_with;
+        $("share_status").textContent = message + " (จำไว้ให้แล้ว)";
+        renderShare();
+        return true;
+      }
+      $("share_with_err").textContent = res.data.error || "บันทึกไม่สำเร็จ";
+      renderShare();
+      return false;
+    }).catch(function () {
+      $("share_with_err").textContent = "ติดต่อโปรแกรมไม่ได้ บันทึกรายชื่อไม่สำเร็จ";
+      return false;
+    });
+  }
+
+  function addShare() {
+    var input = $("share_email");
+    var email = input.value.trim();
+    if (!email) { $("share_with_err").textContent = "กรุณากรอกอีเมล"; input.focus(); return; }
+    var parts = $("share_level").value.split("|");
+    var next = shareList.map(function (e) { return Object.assign({}, e); });
+    next.push({ email: email, permission: parts[0], account_access: parts[1] });
+    saveShare(next, "เพิ่ม " + email + " แล้ว").then(function (ok) {
+      if (ok) { input.value = ""; }
+      input.focus();
+    });
+  }
+
+  levelOptions($("share_level"), SHARE_LEVELS[0].key);
+  $("share_add").addEventListener("click", addShare);
+  $("share_email").addEventListener("keydown", function (event) {
+    if (event.key === "Enter") { event.preventDefault(); addShare(); }
+  });
+  fetch("/api/settings").then(function (res) { return res.json(); }).then(function (data) {
+    shareList = data.share_with || [];
+    renderShare();
+    if (data.source === "config" && shareList.length) {
+      $("share_status").textContent = "รายชื่อนี้มาจากไฟล์ config.yaml ยังไม่เคยบันทึกในหน้านี้";
+    }
+  }).catch(function () { renderShare(); });
 
   $("btn-dry").addEventListener("click", function () {
     if (running) return;
